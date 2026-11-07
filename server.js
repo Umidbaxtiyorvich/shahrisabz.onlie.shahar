@@ -192,7 +192,7 @@ async function watchFollowers() {
   w.initialized = true; w.lastCheck = Date.now(); w.lastError = ''; save();
   return { ok: true, added };
 }
-setInterval(() => { if (db.settings.watcher.sessionid) watchFollowers().catch((e) => { db.settings.watcher.lastError = e.message; save(); console.log('Watcher:', e.message); }); }, 5 * 60 * 1000);
+setInterval(() => { if (db.settings.watcher.sessionid) watchFollowers().then((r) => { if (r.added.length) dmWorker().catch(() => {}); }).catch((e) => { db.settings.watcher.lastError = e.message; save(); console.log('Watcher:', e.message); }); }, 60 * 1000); // har daqiqada
 
 // ---- Yangi obunachiga Direct: "uyingiz tayyor" + sayt, login, parol (akkaunt seansi orqali, navbat bilan sekin) ----
 async function sendWebDm(pk, text) {
@@ -212,7 +212,7 @@ async function dmWorker() {
   catch (e) { w.dmError = e.message; r.dmTries = (r.dmTries || 0) + 1; if (r.dmTries >= 3) db.dmQueue.shift(); }
   save();
 }
-setInterval(() => dmWorker().catch(() => {}), 60 * 1000); // daqiqasiga 1 ta xabar — Instagram cheklamasligi uchun
+setInterval(() => dmWorker().catch(() => {}), 20 * 1000); // 20 soniyada 1 ta xabar
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
