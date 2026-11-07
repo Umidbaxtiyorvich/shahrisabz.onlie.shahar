@@ -11,6 +11,14 @@
     <div class="muted">Usernamelarni vergul yoki yangi qator bilan kiriting — har biriga shahar chekkasida avtomatik uy quriladi.</div>
     <textarea id="users" rows="3" style="width:100%;border-radius:10px;border:1px solid #cfd8e6;padding:8px"></textarea><button id="addUsers">Qo'shish</button>
     <div class="muted" id="hook"></div></div>
+  <div class="card"><h3>⚡ Avtomatik uy — kompyuter brauzeri orqali (tavsiya) <span id="bwst" class="muted"></span></h3>
+    <ol class="muted" style="margin:0;padding-left:18px">
+      <li>Chrome / Yandex brauzeriga <a href="https://www.tampermonkey.net/" target="_blank">Tampermonkey</a> kengaytmasini o'rnating.</li>
+      <li>Pastdagi tugmani bosing → Tampermonkey "O'rnatish" (Install) ni bosing.</li>
+      <li>instagram.com ni <b>shahrisabz.online.shahar</b> bilan ochib qo'ying (tab ochiq tursin). Pastda chap burchakda "🏠 Shahrisabz: ishlayapti ✅" chiqadi.</li>
+    </ol>
+    <div class="row"><button class="ok" id="bwinstall">📥 Kuzatuvchi skriptni o'rnatish</button></div>
+    <div class="muted">Har 20 soniyada yangi obunachi tekshiriladi → uy quriladi → Direct'ga sayt linki, nik va parol boradi. Kompyuter yoqiq va tab ochiq bo'lishi kerak.</div></div>
   <div class="card"><h3>👀 Obunachilarni kuzatish (avtomatik uy) <span id="wst" class="muted"></span></h3>
     <div class="muted">Kompyuterda instagram.com ga <b>shahrisabz.online.shahar</b> bilan kiring → F12 → Application → Cookies → instagram.com → <b>sessionid</b>, <b>csrftoken</b> va <b>ds_user_id</b> qiymatlarini nusxalab shu yerga qo'ying. Har 20 soniyada yangi obunachilar tekshiriladi va ularga uy + parol yaratiladi.</div>
     <input id="wuser" placeholder="Instagram nik"><input id="wsess" type="password" placeholder="sessionid"><input id="wcsrf" type="password" placeholder="csrftoken (Direct yuborish uchun)"><input id="wds" placeholder="ds_user_id">
@@ -43,6 +51,7 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('res').innerHTML='<tr><th>Username</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
  $('price').value=d.settings.pricePerM2;$('cur').value=cur;
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
+ const bw=d.browserWatcher;$('bwst').textContent=bw&&Date.now()-bw.at<90000?(bw.error?'⚠️ '+bw.error:'✅ ishlayapti · '+bw.followers+' obunachi'):(bw?'❌ to\'xtagan (oxirgi: '+new Date(bw.at).toLocaleTimeString()+')':'❌ o\'rnatilmagan');
  const w=d.watcher;$('wuser').value=w.username||'';$('wst').textContent=w.connected?'✅ ulangan':'❌ ulanmagan';
  $('winfo').textContent=(w.lastCheck?'Oxirgi tekshiruv: '+new Date(w.lastCheck).toLocaleString():'')+(w.lastError?' · ⚠️ '+w.lastError:'');
  const pw=await call('/api/admin/passwords');window._pw=pw.list;
@@ -53,6 +62,7 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code>${ig.expiresAt?' · Token muddati: '+new Date(ig.expiresAt).toLocaleDateString():''}${ig.oauthReady?'':' · ⚠️ IG_APP_ID/IG_APP_SECRET sozlanmagan'}${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
  $('mc').textContent=d.messageCount;const ch=await call('/api/admin/chats');
  $('chats').innerHTML='<tr><th>Kimdan</th><th>Kimga</th><th>Xabar</th><th>Vaqt</th></tr>'+ch.messages.slice().reverse().map(m=>`<tr><td>@${esc(m.from)}</td><td>@${esc(m.to)}</td><td>${esc(m.text)}</td><td>${new Date(m.at).toLocaleString()}</td></tr>`).join('');}
+$('bwinstall').onclick=()=>{window.open('/shahrisabz-watcher.user.js?t='+T,'_blank')};
 $('wsave').onclick=async()=>{try{const a=await call('/api/admin/watcher',{username:$('wuser').value,sessionid:$('wsess').value,csrftoken:$('wcsrf').value,dsUserId:$('wds').value});$('wsess').value='';alert(a.added.length+' ta yangi obunachiga uy qurildi');load()}catch(e){alert(e.message);load()}};
 $('dpwsave').onclick=async()=>{try{await call('/api/admin/default-pass',{password:$('dpw').value});alert('Saqlandi');load()}catch(e){alert(e.message)}};
 async function resend(id){await call('/api/admin/resend',{id});alert('Navbatga qo\'yildi');load()}

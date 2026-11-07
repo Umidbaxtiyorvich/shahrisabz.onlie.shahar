@@ -234,8 +234,24 @@ async function api(req, res, url) {
   if (m === 'POST' && p === '/api/follow') {
     const b = await body(req);
     if ((req.headers['x-follow-secret'] || b.secret) !== FOLLOW_SECRET) return send(res, 403, { error: "Noto'g'ri secret" });
-    const r = addFollower(b.username, 'webhook');
-    return r ? send(res, 200, { ok: true, resident: pub(r) }) : send(res, 400, { error: 'username kerak' });
+    const before = db.residents.length;
+    const r = addFollower(b.username, b.source === 'browser' ? 'follow' : 'webhook');
+    if (!r) return send(res, 400, { error: 'username kerak' });
+    if (b.pk && !r.pk) { r.pk = String(b.pk); save(); }
+    return send(res, 200, { ok: true, isNew: db.residents.length > before, needDm: !r.delivered, dmText: passText(r), resident: pub(r) });
+  }
+  if (m === 'POST' && p === '/api/follow/delivered') {
+    const b = await body(req);
+    if (b.secret !== FOLLOW_SECRET) return send(res, 403, { error: "Noto'g'ri secret" });
+    const r = db.residents.find((x) => x.username === cleanName(b.username));
+    if (r) { r.delivered = true; db.dmQueue = db.dmQueue.filter((x) => x !== r.id); save(); }
+    return send(res, 200, { ok: true });
+  }
+  if (m === 'POST' && p === '/api/follow/heartbeat') {
+    const b = await body(req);
+    if (b.secret !== FOLLOW_SECRET) return send(res, 403, { error: "Noto'g'ri secret" });
+    db.settings.browserWatcher = { at: Date.now(), followers: b.followers || 0, error: String(b.error || '').slice(0, 200) }; save();
+    return send(res, 200, { ok: true });
   }
   // Meta webhook tekshiruvi (GET hub.challenge)
   if (p === '/api/instagram/webhook') {
@@ -368,7 +384,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -421,8 +437,20 @@ async function api(req, res, url) {
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname.startsWith('/api/follow')) { // instagram.com dagi kuzatuvchi skript uchun
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  }
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname === '/shahrisabz-watcher.user.js') { // admin tokeni bilan — ichida maxfiy kalit bor
+      if (url.searchParams.get('t') !== ADMIN_TOKEN) { res.writeHead(401); return res.end('Admin emas'); }
+      const site = SITE() || `https://${req.headers.host}`;
+      const js = fs.readFileSync(path.join(__dirname, 'watcher.template.js'), 'utf8').replace('__SITE__', site).replace('__HOST__', new URL(site).hostname).replace('__SECRET__', FOLLOW_SECRET);
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }); return res.end(js);
+    }
     if (url.pathname === '/osm.json') {
       const buf = await getOsm();
       if (!buf) return send(res, 503, { error: 'Xarita hozircha yuklanmadi' });
