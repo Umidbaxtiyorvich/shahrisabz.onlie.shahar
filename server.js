@@ -70,7 +70,8 @@ function userAuth(b) {
   if (!r || !r.pass || r.pass !== hash(b.password || '')) return null;
   return r;
 }
-const isAdmin = (req) => adminTokens.has(req.headers['x-admin-token']);
+const ADMIN_TOKEN = crypto.createHmac('sha256', 'shs-admin:' + FOLLOW_SECRET).update(ADMIN_LOGIN + ':' + ADMIN_PASSWORD).digest('hex');
+const isAdmin = (req) => req.headers['x-admin-token'] === ADMIN_TOKEN;
 function overlaps(a) {
   return db.plots.some((p) => p.status !== 'rejected' && a.x1 < p.x2 && a.x2 > p.x1 && a.z1 < p.z2 && a.z2 > p.z1);
 }
@@ -255,7 +256,7 @@ async function api(req, res, url) {
   }
 
   if (m === 'GET' && p === '/api/instagram/connect') {
-    if (!adminTokens.has(url.searchParams.get('t'))) return send(res, 401, { error: 'Admin emas' });
+    if (url.searchParams.get('t') !== ADMIN_TOKEN) return send(res, 401, { error: 'Admin emas' });
     if (!IG_APP_ID || !IG_APP_SECRET) { res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end("IG_APP_ID va IG_APP_SECRET sozlanmagan. README'dagi yo'riqnomani ko'ring."); }
     const st = crypto.randomBytes(12).toString('hex'); oauthStates.add(st);
     const q = new URLSearchParams({ client_id: IG_APP_ID, redirect_uri: redirectUri(req), response_type: 'code', state: st, scope: 'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages' });
@@ -361,7 +362,7 @@ async function api(req, res, url) {
   if (m === 'POST' && p === '/api/admin/login') {
     const b = await body(req);
     if (b.login !== ADMIN_LOGIN || b.password !== ADMIN_PASSWORD) return send(res, 403, { error: "Login yoki parol noto'g'ri" });
-    const t = crypto.randomBytes(16).toString('hex'); adminTokens.add(t);
+    const t = ADMIN_TOKEN;
     return send(res, 200, { token: t });
   }
   if (p.startsWith('/api/admin/')) {
