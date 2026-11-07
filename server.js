@@ -18,6 +18,7 @@ function loadDb() {
 let db = loadDb();
 db.messages ||= [];
 db.tx ||= [];
+db.settings.pricePerSotix ||= (db.settings.pricePerM2 || 50000) * 100; // 1 sotix = 100 m²
 db.settings.shop ||= {
   houses: { oddiy: 0, zamonaviy: 5000000, kottej: 12000000, villa: 25000000, minora: 50000000 },
   cars: { yoq: 0, sedan: 3000000, jeep: 7000000, sport: 15000000, limuzin: 30000000 },
@@ -64,7 +65,7 @@ function addFollower(username, source, pk) {
 }
 
 const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', car: r.car || 'yoq', carColor: r.carColor ?? 0, avatar: !!r.avatar, claimed: !!r.lastLogin });
-const pubPlot = (p) => ({ style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
+const pubPlot = (p) => ({ sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function body(req) {
@@ -267,7 +268,7 @@ const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid',
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), settings: { pricePerM2: db.settings.pricePerM2, currency: db.settings.currency }, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -399,24 +400,29 @@ async function api(req, res, url) {
   if (m === 'POST' && p === '/api/plots/request') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
-    const x1 = Math.min(b.x1, b.x2), x2 = Math.max(b.x1, b.x2), z1 = Math.min(b.z1, b.z2), z2 = Math.max(b.z1, b.z2);
+    // Joy: belgilangan nuqta markazida, sotix soniga teng kvadrat (1 sotix = 100 m²)
+    const sotix = Math.round(Number(b.sotix) * 10) / 10;
+    if (!(sotix >= 0.5 && sotix <= 200)) return send(res, 400, { error: 'Sotix soni 0.5 dan 200 gacha bo\'lsin' });
+    if (!isFinite(b.x) || !isFinite(b.z)) return send(res, 400, { error: 'Joyni belgilang' });
+    const half = Math.sqrt(sotix * 100) / 2;
+    const x1 = b.x - half, x2 = +b.x + half, z1 = b.z - half, z2 = +b.z + half;
     if (![x1, x2, z1, z2].every(isFinite)) return send(res, 400, { error: "Joy noto'g'ri" });
-    const area = Math.round((x2 - x1) * (z2 - z1));
+    const area = Math.round(sotix * 100);
     if (area < 20) return send(res, 400, { error: 'Joy juda kichik (kamida 20 m²)' });
     if (area > 20000) return send(res, 400, { error: 'Joy juda katta (ko\'pi bilan 20 000 m²)' });
     const plot = { x1, x2, z1, z2 };
     if (overlaps(plot)) return send(res, 409, { error: 'Bu joy band — boshqa joy tanlang' });
     Object.assign(plot, {
-      id: id(), owner: r.username, area, price: area * db.settings.pricePerM2,
+      id: id(), owner: r.username, area, sotix, price: Math.round(sotix * db.settings.pricePerSotix),
       type: TYPES.includes(b.type) ? b.type : 'boshqa', name: String(b.name || '').slice(0, 60) || r.username,
       contact: String(b.contact || '').slice(0, 80), status: 'pending', mahalla: String(b.mahalla || '').slice(0, 80), street: String(b.street || '').slice(0, 80), createdAt: Date.now(),
     });
     plot.style = 'oddiy';
     if ((r.balance || 0) >= plot.price) { // hamyonda pul yetarli — darhol sotiladi
       r.balance -= plot.price; plot.status = 'sold'; plot.paidFromBalance = true;
-      addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${area} m²)`);
-      db.notifications.unshift({ id: id(), plotId: plot.id, text: `✅ @${r.username} hamyonidan "${plot.name}" (${area} m²) joyini sotib oldi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
-    } else db.notifications.unshift({ id: id(), plotId: plot.id, text: `@${r.username} "${plot.name}" (${plot.type}) uchun ${area} m² joyni sotib olmoqchi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency} (hamyonda ${(r.balance || 0).toLocaleString('ru-RU')})`, read: false, at: Date.now() });
+      addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${sotix} sotix)`);
+      db.notifications.unshift({ id: id(), plotId: plot.id, text: `✅ @${r.username} hamyonidan "${plot.name}" (${sotix} sotix) joyini sotib oldi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
+    } else db.notifications.unshift({ id: id(), plotId: plot.id, text: `@${r.username} "${plot.name}" (${plot.type}) uchun ${sotix} sotix (${area} m²) joyni sotib olmoqchi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency} (hamyonda ${(r.balance || 0).toLocaleString('ru-RU')})`, read: false, at: Date.now() });
     db.plots.push(plot);
     save();
     return send(res, 200, { ok: true, plot: pubPlot(plot) });
@@ -529,7 +535,7 @@ async function api(req, res, url) {
     if (p === '/api/admin/tx') return send(res, 200, { tx: db.tx.slice(-300).reverse() });
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.pass = hash(db.settings.defaultPass); r.mustChange = true; delete r.plainPass; r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
-    if (p === '/api/admin/settings') { const v = Number(b.pricePerM2); if (v > 0) db.settings.pricePerM2 = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }
+    if (p === '/api/admin/settings') { const v = Number(b.pricePerSotix); if (v > 0) db.settings.pricePerSotix = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/read') { db.notifications.forEach((n) => (n.read = true)); save(); return send(res, 200, { ok: true }); }
   }
   send(res, 404, { error: 'Not found' });

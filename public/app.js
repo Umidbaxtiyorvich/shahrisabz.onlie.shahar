@@ -322,7 +322,7 @@ let mode = 'view', corner = null, preview = null;
 const status = (t) => { $('status').textContent = t; $('status').classList.toggle('hidden', !t); };
 function setMode(m) {
   mode = m; corner = null; if (preview) { scene.remove(preview); preview = null; }
-  status(m === 'move' ? "🚚 Xaritada yangi uyingiz uchun ko'cha bo'yidagi joyni bosing (Esc — bekor)" : m === 'buy' ? '📐 Joyning birinchi burchagini bosing (Esc — bekor)' : '');
+  status(m === 'move' ? "🚚 Xaritada yangi uyingiz uchun ko'cha bo'yidagi joyni bosing (Esc — bekor)" : m === 'buy' ? '📐 Xaritada joyni bosib belgilang (Esc — bekor)' : '');
 }
 addEventListener('keydown', (e) => { if (e.key === 'Escape') setMode('view'); });
 
@@ -331,14 +331,6 @@ function groundPoint(e) { mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY /
 let downAt = null;
 renderer.domElement.addEventListener('pointerdown', (e) => (downAt = [e.clientX, e.clientY]));
 renderer.domElement.addEventListener('pointerup', (e) => { if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 6) onClick(e); });
-renderer.domElement.addEventListener('pointermove', (e) => {
-  if (mode !== 'buy' || !corner) return; const p = groundPoint(e); if (!p) return;
-  if (preview) scene.remove(preview);
-  const w = Math.abs(p.x - corner.x), d = Math.abs(p.z - corner.z);
-  preview = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1), Math.max(d, 1)), new THREE.MeshBasicMaterial({ color: 0x2f7cf6, transparent: true, opacity: .4 }));
-  preview.rotation.x = -Math.PI / 2; preview.position.set((p.x + corner.x) / 2, .8, (p.z + corner.z) / 2); scene.add(preview);
-  status(`📐 ${Math.round(w * d)} m² — ${money(Math.round(w * d) * state.settings.pricePerM2)}. Ikkinchi burchakni bosing`);
-});
 
 async function onClick(e) {
   const p = groundPoint(e);
@@ -355,21 +347,27 @@ async function onClick(e) {
     return;
   }
   if (mode === 'buy' && p) {
-    if (!corner) { corner = p.clone(); return status('📐 Endi qarama-qarshi burchakni bosing'); }
-    const x1 = corner.x, z1 = corner.z, x2 = p.x, z2 = p.z;
-    const area = Math.round(Math.abs(x2 - x1) * Math.abs(z2 - z1));
-    const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, street = nearestStreetName(cx, cz), mahalla = nearestMahalla(cx, cz);
+    const cx = p.x, cz = p.z, street = nearestStreetName(cx, cz), mahalla = nearestMahalla(cx, cz), per = state.settings.pricePerSotix;
+    const show = (sx) => { // tanlangan sotixni xaritada kvadrat qilib ko'rsatish
+      if (preview) scene.remove(preview);
+      const a = Math.sqrt(Math.max(sx, .1) * 100);
+      preview = new THREE.Mesh(new THREE.PlaneGeometry(a, a), new THREE.MeshBasicMaterial({ color: 0x2f7cf6, transparent: true, opacity: .45 }));
+      preview.rotation.x = -Math.PI / 2; preview.position.set(cx, .8, cz); scene.add(preview);
+    };
     modal(`<h3>📐 Joy sotib olish</h3>
-      <div>Maydon: <b>${area} m²</b> · Narx: <b>${money(area * state.settings.pricePerM2)}</b> · Hamyonda: <b>${money(wallet.balance)}</b><div class="muted">(1 m² = ${money(state.settings.pricePerM2)})</div></div>
       <div class="muted">📍 ${esc(mahalla)}${street ? ', ' + esc(street) : ''}</div>
+      <label>Necha sotix kerak? <span class="muted">(1 sotix = 100 m²)</span><input id="psx" type="number" min="0.5" max="200" step="0.5" value="6"></label>
+      <div class="wallet">1 sotix: <b>${money(per)}</b><br>Jami: <b id="ptot"></b><br><span class="muted">Hamyonda: ${money(wallet.balance)}</span></div>
       <label>Nima qurasiz?<select id="ptype">${state.types.map((t) => `<option>${esc(t)}</option>`).join('')}</select></label>
       <input id="pname" placeholder="Nomi (masalan: Umid market)">
       <input id="pcontact" placeholder="Telefon raqamingiz (admin bog'lanishi uchun)">
-      <div class="row"><button class="ok" id="send">Sotib olish so'rovini yuborish</button><button class="ghost" id="nope">Bekor</button></div>`);
+      <div class="row"><button class="ok" id="send">Sotib olish</button><button class="ghost" id="nope">Bekor</button></div>`);
+    const upd = () => { const sx = Number($('psx').value) || 0; $('ptot').textContent = `${sx} sotix (${Math.round(sx * 100)} m²) = ${money(Math.round(sx * per))}`; show(sx); };
+    $('psx').oninput = upd; upd(); $('psx').focus(); $('psx').select();
     $('nope').onclick = () => { closeModal(); setMode('view'); };
     $('send').onclick = async () => {
       try {
-        const j = await api('/api/plots/request', { ...me, x1, z1, x2, z2, type: $('ptype').value, name: $('pname').value, contact: $('pcontact').value, street, mahalla });
+        const j = await api('/api/plots/request', { ...me, x: cx, z: cz, sotix: Number($('psx').value), type: $('ptype').value, name: $('pname').value, contact: $('pcontact').value, street, mahalla });
         modal(j.plot.status === 'sold' ? `<h3>✅ Joy sizniki!</h3><div>Pul hamyoningizdan yechildi. Binongiz xaritada qurildi — endi uni zamonaviy dizaynga o'zgartirishingiz mumkin.</div><button id="okk">Yaxshi</button>` : `<h3>✅ So'rov yuborildi</h3><div>Hamyoningizda pul yetarli emas. Admin to'lovni qabul qilgandan keyin joy sizniki bo'ladi.</div><button id="okk">Yaxshi</button>`);
         $('okk').onclick = closeModal; setMode('view'); await refresh();
       } catch (er) { alert(er.message); }
@@ -387,7 +385,7 @@ async function onClick(e) {
     $('nope').onclick = closeModal;
   } else if (hit?.object.userData.kind === 'plot') {
     const pl = hit.object.userData.p;
-    modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.area} m² · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? '<button id="pup">🎨 Dizaynni o\'zgartirish</button>' : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' : ''}<button class="ghost" id="nope">Yopish</button></div>`);
+    modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.sotix} sotix (${pl.area} m²) · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? '<button id="pup">🎨 Dizaynni o\'zgartirish</button>' : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' : ''}<button class="ghost" id="nope">Yopish</button></div>`);
     $('nope').onclick = closeModal; if ($('pup')) $('pup').onclick = () => openDesigner(pl); if ($('pchat')) $('pchat').onclick = () => openChat(pl.owner);
   }
 }
@@ -423,7 +421,7 @@ async function openMyPanel() {
   modal(`<div class="row" style="align-items:center"><img class="ava" src="/avatar/${encodeURIComponent(r.username)}" onerror="this.style.visibility='hidden'"><div><h3>@${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div></div></div>
     <div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
     <div class="row"><button id="pdes">🎨 Uy va mashina</button><button id="pmove">🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button></div>
-    ${wallet.plots.length ? '<b>Mening joylarim</b>' + wallet.plots.map((p, i) => `<div class="conv" data-i="${i}">${esc(p.name)} · ${p.area} m² · ${p.status === 'sold' ? STYLE_NAMES[p.style] || p.style : '⏳ to\'lov kutilmoqda'}</div>`).join('') : ''}
+    ${wallet.plots.length ? '<b>Mening joylarim</b>' + wallet.plots.map((p, i) => `<div class="conv" data-i="${i}">${esc(p.name)} · ${p.sotix} sotix · ${p.status === 'sold' ? STYLE_NAMES[p.style] || p.style : '⏳ to\'lov kutilmoqda'}</div>`).join('') : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
     <button class="ghost" id="nope">Yopish</button>`);
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
