@@ -29,3 +29,15 @@ Instagram rasmiy API'si "yangi obunachi" hodisasini bermaydi. Shuning uchun:
 3. Yoki admin paneldan usernamelarni ro'yxat qilib qo'shing.
 
 Ma'lumotlar `data/db.json` da saqlanadi. Xarita © OpenStreetMap hissadorlari.
+
+## @shahrisabz.online.shahar ni ulash (uzoq muddatli token avtomatik)
+1. Instagram ilovasida: **Sozlamalar → Akkaunt turi → Professional (Business yoki Creator)** ga o'tkazing.
+2. https://developers.facebook.com → **My Apps → Create App** → turi **Business** → ilovaga **Instagram** mahsulotini qo'shing → **"API setup with Instagram login"**.
+3. U yerdan **Instagram App ID** va **Instagram App Secret** ni oling.
+4. **Business login settings → OAuth redirect URIs** ga yozing: `https://SAYTINGIZ/api/instagram/callback`
+5. **App roles → Roles → Instagram Testers** ga `shahrisabz.online.shahar` ni qo'shing va Instagram'da (Sozlamalar → Ilovalar va saytlar → Tester takliflari) taklifni qabul qiling.
+6. Serverni ishga tushiring:
+   ```bash
+   IG_APP_ID=... IG_APP_SECRET=... BASE_URL=https://SAYTINGIZ npm start
+   ```
+7. `/admin` → **"📸 Instagram bilan ulash"** → @shahrisabz.online.shahar bilan kiring → ruxsat bering. Sayt 60 kunlik tokenni o'zi oladi va har kuni yangilab turadi.

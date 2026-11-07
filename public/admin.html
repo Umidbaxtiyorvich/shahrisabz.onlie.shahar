@@ -13,7 +13,7 @@
     <div class="muted" id="hook"></div></div>
   <div class="card"><h3>📸 Instagram akkauntni ulash <span id="igst" class="muted"></span></h3>
     <div class="muted">Meta Developers'da Instagram Business akkaunt uchun <b>Access Token</b> va <b>Instagram akkaunt ID</b> oling va shu yerga kiriting.</div>
-    <input id="igid" placeholder="Instagram akkaunt ID (masalan 1784...)"><input id="igtok" type="password" placeholder="Access token (o'zgartirmasangiz bo'sh qoldiring)"><input id="igvt" placeholder="Webhook verify token">
+    <div class="row"><button class="ok" id="igoauth">📸 Instagram bilan ulash (avtomatik token)</button></div><div class="muted">Yoki qo'lda:</div><input id="igid" placeholder="Instagram akkaunt ID (masalan 1784...)"><input id="igtok" type="password" placeholder="Access token (o'zgartirmasangiz bo'sh qoldiring)"><input id="igvt" placeholder="Webhook verify token">
     <div class="row"><button id="igsave">Saqlash</button><button class="ghost" id="igtest">Ulanishni tekshirish</button><button class="ok" id="igsync">Hozir sinxronlash</button></div>
     <div class="muted" id="iginfo"></div></div>
   <div class="card"><h3>💬 Aholi yozishmalari (<span id="mc">0</span>)</h3><div class="scroll" style="max-height:300px;overflow:auto"><table id="chats"></table></div></div>
@@ -37,9 +37,10 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
  const ig=d.settings.instagram;$('igid').value=ig.igUserId||'';$('igvt').value=ig.verifyToken||'';
  $('igst').textContent=ig.hasToken?('✅ ulangan'+(ig.username?' — @'+ig.username:'')):'❌ ulanmagan';
- $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code>${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
+ $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code>${ig.expiresAt?' · Token muddati: '+new Date(ig.expiresAt).toLocaleDateString():''}${ig.oauthReady?'':' · ⚠️ IG_APP_ID/IG_APP_SECRET sozlanmagan'}${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
  $('mc').textContent=d.messageCount;const ch=await call('/api/admin/chats');
  $('chats').innerHTML='<tr><th>Kimdan</th><th>Kimga</th><th>Xabar</th><th>Vaqt</th></tr>'+ch.messages.slice().reverse().map(m=>`<tr><td>@${esc(m.from)}</td><td>@${esc(m.to)}</td><td>${esc(m.text)}</td><td>${new Date(m.at).toLocaleString()}</td></tr>`).join('');}
+$('igoauth').onclick=()=>{location.href='/api/instagram/connect?t='+T};
 $('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';alert('Saqlandi');load()};
 $('igtest').onclick=async()=>{try{const a=await call('/api/admin/instagram/test',{});alert(`✅ @${a.username} — ${a.followers_count} obunachi, ${a.media_count} post`);load()}catch(e){alert(e.message)}};
 $('igsync').onclick=async()=>{try{const a=await call('/api/admin/instagram/sync',{});alert(a.added.length+' ta yangi uy qurildi');load()}catch(e){alert(e.message)}};

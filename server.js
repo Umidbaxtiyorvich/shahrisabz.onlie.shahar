@@ -18,6 +18,10 @@ function loadDb() {
 let db = loadDb();
 db.messages ||= [];
 db.settings.instagram ||= { token: '', igUserId: '', verifyToken: '', username: '', lastSync: 0 };
+const IG_APP_ID = process.env.IG_APP_ID || '';
+const IG_APP_SECRET = process.env.IG_APP_SECRET || '';
+const BASE_URL = process.env.BASE_URL || ''; // masalan https://shahrisabz.online
+const oauthStates = new Set();
 function save() { fs.mkdirSync(path.dirname(DB_FILE), { recursive: true }); fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
 const adminTokens = new Set();
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -67,7 +71,8 @@ function overlaps(a) {
 async function igGet(pathq) {
   const ig = db.settings.instagram;
   if (!ig.token || !ig.igUserId) throw new Error('Avval Instagram token va akkaunt ID ni kiriting');
-  const r = await fetch(`https://graph.facebook.com/v21.0/${pathq}${pathq.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(ig.token)}`);
+  const base = ig.kind === 'instagram' ? 'https://graph.instagram.com/v21.0' : 'https://graph.facebook.com/v21.0';
+  const r = await fetch(`${base}/${pathq}${pathq.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(ig.token)}`);
   const j = await r.json();
   if (j.error) throw new Error('Instagram: ' + j.error.message);
   return j;
@@ -84,6 +89,16 @@ async function igSync() {
   return { ok: true, added };
 }
 setInterval(() => { if (db.settings.instagram.token) igSync().catch((e) => console.log(e.message)); }, 10 * 60 * 1000);
+
+// ---- Instagram Business Login (OAuth): admin "Instagram bilan ulash" ni bosadi ----
+const redirectUri = (req) => (BASE_URL || `http://${req.headers.host}`) + '/api/instagram/callback';
+async function refreshIgToken() {
+  const ig = db.settings.instagram;
+  if (ig.kind !== 'instagram' || !ig.token) return;
+  const r = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(ig.token)}`);
+  const j = await r.json(); if (j.access_token) { ig.token = j.access_token; ig.expiresAt = Date.now() + j.expires_in * 1000; save(); }
+}
+setInterval(() => refreshIgToken().catch(() => {}), 24 * 3600 * 1000);
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
@@ -112,6 +127,31 @@ async function api(req, res, url) {
       if (u) { const r = addFollower(u, 'instagram'); if (r) added.push(r.username); }
     }
     return send(res, 200, { ok: true, added });
+  }
+
+  if (m === 'GET' && p === '/api/instagram/connect') {
+    if (!adminTokens.has(url.searchParams.get('t'))) return send(res, 401, { error: 'Admin emas' });
+    if (!IG_APP_ID || !IG_APP_SECRET) { res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end("IG_APP_ID va IG_APP_SECRET sozlanmagan. README'dagi yo'riqnomani ko'ring."); }
+    const st = crypto.randomBytes(12).toString('hex'); oauthStates.add(st);
+    const q = new URLSearchParams({ client_id: IG_APP_ID, redirect_uri: redirectUri(req), response_type: 'code', state: st, scope: 'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages' });
+    res.writeHead(302, { Location: 'https://www.instagram.com/oauth/authorize?' + q }); return res.end();
+  }
+  if (m === 'GET' && p === '/api/instagram/callback') {
+    const done = (msg) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(`<meta charset="utf-8"><p style="font-family:sans-serif">${msg}</p><p><a href="/admin">← Admin panel</a></p>`); };
+    const st = url.searchParams.get('state'); if (!oauthStates.has(st)) return done('Xato: state noto\'g\'ri');
+    oauthStates.delete(st);
+    const code = url.searchParams.get('code'); if (!code) return done('Ruxsat berilmadi: ' + (url.searchParams.get('error_description') || ''));
+    try {
+      const r1 = await fetch('https://api.instagram.com/oauth/access_token', { method: 'POST', body: new URLSearchParams({ client_id: IG_APP_ID, client_secret: IG_APP_SECRET, grant_type: 'authorization_code', redirect_uri: redirectUri(req), code }) });
+      const short = await r1.json(); if (!short.access_token) throw new Error(short.error_message || JSON.stringify(short));
+      const r2 = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${IG_APP_SECRET}&access_token=${short.access_token}`);
+      const long = await r2.json(); if (!long.access_token) throw new Error(JSON.stringify(long));
+      const ig = db.settings.instagram;
+      Object.assign(ig, { kind: 'instagram', token: long.access_token, expiresAt: Date.now() + long.expires_in * 1000 });
+      const meR = await fetch(`https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${long.access_token}`); const meJ = await meR.json();
+      ig.igUserId = String(meJ.user_id || meJ.id || short.user_id); ig.username = meJ.username || ''; save();
+      return done(`✅ @${ig.username} ulandi! Uzoq muddatli token olindi (60 kun, avtomatik yangilanadi).`);
+    } catch (e) { return done('Xato: ' + e.message); }
   }
   if (m === 'POST' && p === '/api/claim') {
     const b = await body(req);
@@ -192,7 +232,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token } }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -207,7 +247,7 @@ async function api(req, res, url) {
 
     if (p === '/api/admin/instagram') {
       const ig = db.settings.instagram;
-      if (b.token !== undefined) ig.token = String(b.token).trim();
+      if (b.token !== undefined) { ig.token = String(b.token).trim(); ig.kind = ig.token.startsWith('IG') ? 'instagram' : 'facebook'; }
       if (b.igUserId !== undefined) ig.igUserId = String(b.igUserId).trim();
       if (b.verifyToken !== undefined) ig.verifyToken = String(b.verifyToken).trim();
       save(); return send(res, 200, { ok: true });
