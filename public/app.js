@@ -226,7 +226,7 @@ function flyTo(x, z, dist = 160) {
 // ---- Modal ----
 function modal(html) { $('mbox').innerHTML = html; $('modal').classList.remove('hidden'); }
 const closeModal = () => $('modal').classList.add('hidden');
-$('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+$('modal').addEventListener('click', (e) => { if (e.target.id === 'modal' && !$('npok')) closeModal(); });
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (v) => Number(v).toLocaleString('ru-RU') + ' ' + (state.settings.currency || "so'm");
 
@@ -304,9 +304,17 @@ async function onClick(e) {
   }
 }
 
+function askNewPass() {
+  modal(`<h3>🔐 Yangi parol qo'ying</h3><div class="hint">Birinchi kirish: umumiy parolni o'zingizning parolingizga almashtiring. Keyin har doim shu yangi parol bilan kirasiz.</div>
+    <input id="np1" type="password" placeholder="Yangi parol"><input id="np2" type="password" placeholder="Yangi parolni takrorlang"><button class="ok" id="npok">Saqlash</button>`);
+  $('npok').onclick = async () => {
+    if ($('np1').value !== $('np2').value) return alert('Parollar bir xil emas');
+    try { await api('/api/change-password', { ...me, newPassword: $('np1').value }); me.password = $('np1').value; store.set('me', me); closeModal(); alert('✅ Parol saqlandi'); } catch (e) { alert(e.message); }
+  };
+}
 // ---- Tugmalar ----
 $('login').onclick = async () => {
-  try { const j = await api('/api/claim', { username: $('lu').value, password: $('lp').value }); me = { username: j.resident.username, password: $('lp').value }; store.set('me', me); await refresh(); flyTo(j.resident.x, j.resident.z); }
+  try { const j = await api('/api/claim', { username: $('lu').value, password: $('lp').value }); me = { username: j.resident.username, password: $('lp').value }; store.set('me', me); await refresh(); flyTo(j.resident.x, j.resident.z); if (j.mustChange) askNewPass(); }
   catch (er) { alert(er.message); }
 };
 $('logout').onclick = () => { me = null; store.set('me', null); renderMe(); setMode('view'); };

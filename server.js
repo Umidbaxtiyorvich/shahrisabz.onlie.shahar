@@ -17,6 +17,8 @@ function loadDb() {
 }
 let db = loadDb();
 db.messages ||= [];
+db.dmQueue ||= [];
+db.settings.defaultPass ||= 'shahrisabz2026';
 db.settings.watcher ||= { sessionid: '', username: 'shahrisabz.online.shahar', pk: '', initialized: false, lastCheck: 0, lastError: '' };
 db.settings.instagram ||= { token: '', igUserId: '', verifyToken: '', username: '', lastSync: 0 };
 const IG_APP_ID = process.env.IG_APP_ID || '';
@@ -40,16 +42,18 @@ function edgeSpot() {
 
 const genPass = () => String(crypto.randomInt(100000, 1000000));
 const SITE = () => process.env.BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '');
-const passText = (r) => `Assalomu alaykum, @${r.username}! 🏠 Shahrisabz online shahrida uyingiz qurildi.\nKirish: ${SITE() || 'saytimiz'}\nLogin: ${r.username}\nParol: ${r.initialPass}\nParolni hech kimga bermang.`;
-function addFollower(username, source) {
+const passText = (r) => `Assalomu alaykum, @${r.username}! 🏠 Sizning uyingiz tayyor — Shahrisabz online shahrida!\nSayt: ${SITE() || 'saytimiz'}\nLogin: ${r.username}\nParol: ${r.mustChange ? db.settings.defaultPass : '(o\'zingiz qo\'ygan parol)'}\nBirinchi kirishda parolni o'zingiznikiga almashtirasiz.`;
+function addFollower(username, source, pk) {
   const u = cleanName(username);
   if (!u) return null;
   let r = db.residents.find((x) => x.username === u);
   if (r) return r;
   const s = edgeSpot();
-  const pw = genPass();
-  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, delivered: false };
+  const pw = db.settings.defaultPass;
+  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
+  if (pk) r.pk = String(pk);
   db.residents.push(r);
+  if (r.pk) (db.dmQueue ||= []).push(r.id); // Direct'ga "uyingiz tayyor" xabari navbatga
   save();
   return r;
 }
@@ -177,7 +181,7 @@ async function watchFollowers() {
     const j = await igWeb(`https://www.instagram.com/api/v1/friendships/${w.pk}/followers/?count=100${maxId ? '&max_id=' + maxId : ''}`);
     let knownInPage = 0;
     for (const u of j.users || []) {
-      const before = db.residents.length; addFollower(u.username, 'follow');
+      const before = db.residents.length; addFollower(u.username, 'follow', w.initialized ? u.pk : null);
       if (db.residents.length > before) added.push(u.username); else knownInPage++;
     }
     maxId = j.next_max_id || '';
@@ -189,6 +193,26 @@ async function watchFollowers() {
   return { ok: true, added };
 }
 setInterval(() => { if (db.settings.watcher.sessionid) watchFollowers().catch((e) => { db.settings.watcher.lastError = e.message; save(); console.log('Watcher:', e.message); }); }, 5 * 60 * 1000);
+
+// ---- Yangi obunachiga Direct: "uyingiz tayyor" + sayt, login, parol (akkaunt seansi orqali, navbat bilan sekin) ----
+async function sendWebDm(pk, text) {
+  const w = db.settings.watcher;
+  if (!w.csrftoken) throw new Error('csrftoken kiritilmagan');
+  const form = new URLSearchParams({ recipient_users: JSON.stringify([[String(pk)]]), action: 'send_item', client_context: String(Date.now()) + crypto.randomInt(1000, 9999), text });
+  const r = await fetch('https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/', { method: 'POST', body: form, headers: { ...IGW, 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': w.csrftoken, Referer: 'https://www.instagram.com/direct/', Cookie: `sessionid=${w.sessionid}; csrftoken=${w.csrftoken}; ds_user_id=${w.pk}` }, signal: AbortSignal.timeout(30000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.status !== 'ok') throw new Error('Direct yuborilmadi: ' + (j.message || r.status));
+}
+async function dmWorker() {
+  const w = db.settings.watcher;
+  if (!w.sessionid || !w.csrftoken || !db.dmQueue.length) return;
+  const rid = db.dmQueue[0], r = db.residents.find((x) => x.id === rid);
+  if (!r || !r.pk || r.delivered) { db.dmQueue.shift(); save(); return; }
+  try { await sendWebDm(r.pk, passText(r)); r.delivered = true; db.dmQueue.shift(); w.dmError = ''; }
+  catch (e) { w.dmError = e.message; r.dmTries = (r.dmTries || 0) + 1; if (r.dmTries >= 3) db.dmQueue.shift(); }
+  save();
+}
+setInterval(() => dmWorker().catch(() => {}), 60 * 1000); // daqiqasiga 1 ta xabar — Instagram cheklamasligi uchun
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
@@ -254,7 +278,16 @@ async function api(req, res, url) {
     if (r.pass) { if (r.pass !== hash(b.password)) return send(res, 403, { error: "Parol noto'g'ri. Parolni olish uchun @shahrisabz.online.shahar ga Direct'da istalgan xabar yozing." }); }
     else r.pass = hash(b.password);
     r.lastLogin = Date.now(); save();
-    return send(res, 200, { ok: true, resident: pub(r) });
+    return send(res, 200, { ok: true, resident: pub(r), mustChange: !!r.mustChange });
+  }
+  if (m === 'POST' && p === '/api/change-password') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: "Joriy parol noto'g'ri" });
+    const np = String(b.newPassword || '');
+    if (np.length < 4) return send(res, 400, { error: "Yangi parol kamida 4 belgi bo'lsin" });
+    if (np === db.settings.defaultPass) return send(res, 400, { error: 'Umumiy paroldan boshqa parol tanlang' });
+    r.pass = hash(np); r.plainPass = np; r.mustChange = false; save();
+    return send(res, 200, { ok: true });
   }
   if (m === 'POST' && p === '/api/move') {
     const b = await body(req); const r = userAuth(b);
@@ -358,14 +391,18 @@ async function api(req, res, url) {
     if (p === '/api/admin/watcher') {
       const w = db.settings.watcher;
       if (b.sessionid) { w.sessionid = decodeURIComponent(String(b.sessionid).trim()); w.pk = ''; }
+      if (b.csrftoken) w.csrftoken = String(b.csrftoken).trim();
+      if (b.dsUserId) w.pk = String(b.dsUserId).trim();
       if (b.username) { w.username = cleanName(b.username); w.pk = ''; }
       save();
       try { return send(res, 200, await watchFollowers()); } catch (e) { w.lastError = e.message; save(); return send(res, 400, { error: e.message }); }
     }
-    if (p === '/api/admin/passwords') return send(res, 200, { list: db.residents.filter((r) => r.initialPass).sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r.id, username: r.username, password: r.initialPass, delivered: !!r.delivered, loggedIn: !!r.lastLogin, text: passText(r) })) });
+    if (p === '/api/admin/passwords') return send(res, 200, { defaultPass: db.settings.defaultPass, queue: db.dmQueue.length, dmError: db.settings.watcher.dmError || '', list: db.residents.slice().sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r.id, username: r.username, password: r.mustChange ? db.settings.defaultPass + ' (umumiy)' : (r.plainPass || '—'), changed: !r.mustChange, delivered: !!r.delivered, loggedIn: !!r.lastLogin, text: passText(r), canDm: !!r.pk })) });
+    if (p === '/api/admin/default-pass') { const v = String(b.password || ''); if (v.length < 4) return send(res, 400, { error: 'Kamida 4 belgi' }); const old = db.settings.defaultPass; db.settings.defaultPass = v; db.residents.forEach((r) => { if (r.mustChange || r.pass === hash(old)) { r.pass = hash(v); r.mustChange = true; } }); save(); return send(res, 200, { ok: true }); }
+    if (p === '/api/admin/resend') { const r = db.residents.find((x) => x.id === b.id); if (r && r.pk) { r.delivered = false; r.dmTries = 0; db.dmQueue.unshift(r.id); save(); } return send(res, 200, { ok: true, queued: !!(r && r.pk) }); }
     if (p === '/api/admin/delivered') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.delivered = true; save(); } return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
-    if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.initialPass = genPass(); r.pass = hash(r.initialPass); r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
+    if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.pass = hash(db.settings.defaultPass); r.mustChange = true; delete r.plainPass; r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
     if (p === '/api/admin/settings') { const v = Number(b.pricePerM2); if (v > 0) db.settings.pricePerM2 = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/read') { db.notifications.forEach((n) => (n.read = true)); save(); return send(res, 200, { ok: true }); }
   }
