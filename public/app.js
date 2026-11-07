@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 const LAT0 = 39.0578, LON0 = 66.8297;
 const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110540;
 const toXZ = (lat, lon) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];
-const BBOX = '38.90,66.62,39.22,67.05';
+const BBOX = '38.90,66.62,39.22,67.05', CITY_BBOX = '39.00,66.76,39.11,66.89';
 
 const $ = (id) => document.getElementById(id);
 const api = async (url, data) => {
@@ -65,15 +65,15 @@ const streetLabels = [], placeLabels = [];
 let streetNames = [], officialPlaces = [];
 
 async function loadOSM() {
-  const cached = store.get('osm-shahrisabz-v3');
+  const cached = store.get('osm-shahrisabz-v4');
   if (cached) return cached;
-  status('🗺️ Shahrisabz xaritasi yuklanmoqda (birinchi marta 1–2 daqiqa)…');
-  try { const r = await fetch('osm.json', { signal: AbortSignal.timeout(150000) }); if (r.ok) { const j = await r.json(); store.set('osm-shahrisabz-v3', j); return j; } } catch {}
-  const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road)$"](${BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${BBOX}););out center tags;`;
+  status('🗺️ Shahrisabz xaritasi yuklanmoqda (birinchi marta 1–3 daqiqa)…');
+  try { const r = await fetch('osm.json', { signal: AbortSignal.timeout(240000) }); if (r.ok) { const j = await r.json(); store.set('osm-shahrisabz-v4', j); return j; } } catch {}
+  const q = `[out:json][timeout:170];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|road)$"](${CITY_BBOX});way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${BBOX}););out center tags;`;
   const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   for (const u of mirrors) {
     try {
-      const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: AbortSignal.timeout(60000) });
+      const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: AbortSignal.timeout(180000) });
       if (!r.ok) continue;
       const j = await r.json();
       const slim = { ways: [], places: [] };
@@ -81,7 +81,7 @@ async function loadOSM() {
         if (e.type === 'way' && e.geometry) slim.ways.push({ t: e.tags.highway, n: e.tags['name:uz'] || e.tags.name || '', g: e.geometry.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]) });
         else if (e.tags?.name && (e.lat || e.center)) slim.places.push({ n: e.tags['name:uz'] || e.tags.name, k: e.tags.place || 'mahalla', lat: e.lat ?? e.center.lat, lon: e.lon ?? e.center.lon });
       }
-      store.set('osm-shahrisabz-v3', slim);
+      store.set('osm-shahrisabz-v4', slim);
       return slim;
     } catch {}
   }
@@ -567,7 +567,10 @@ let frame = 0;
   try { officialPlaces = (await (await fetch('places.json')).json()).places; } catch {}
   const data = await loadOSM();
   if (data) { buildRoads(data); status(''); }
-  else { buildRoads(fallbackGrid()); status("⚠️ OpenStreetMap ma'lumoti yuklanmadi — namunaviy to'r ko'rsatilmoqda"); }
+  else {
+    buildRoads(fallbackGrid()); status("⏳ Shahrisabz xaritasi serverda tayyorlanmoqda — tayyor bo'lishi bilan o'zi ochiladi…");
+    const t = setInterval(async () => { try { const r = await fetch('osm.json', { method: 'HEAD' }); if (r.ok) { clearInterval(t); location.reload(); } } catch {} }, 30000);
+  }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
 })();
