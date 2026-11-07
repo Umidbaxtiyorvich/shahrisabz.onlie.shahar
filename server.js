@@ -161,20 +161,27 @@ async function igPost(pathq, payload) {
 }
 // Direct'ga xabar yozgan odamga: uy quriladi (bo'lmasa) va parol avtomatik javob bo'lib boradi (rasmiy API, 24 soat oynasi)
 const KEYWORD = /(^|[^a-zа-я'ʻ`])(uy|уй)([^a-zа-я'ʻ`]|$)/i;
-const igMsg = (recipient, text) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } });
+// 'me/messages' — Instagram Login tokeni (IGAA…) uchun ham, Facebook sahifa tokeni (EAA…) uchun ham ishlaydi
+const igMsg = (recipient, text) => igPost('me/messages', { recipient, message: { text } }).catch((e) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } }).catch(() => { throw e; }));
+db.webhookLog ||= [];
+function wlog(o) { db.webhookLog.unshift({ at: Date.now(), ...o }); db.webhookLog = db.webhookLog.slice(0, 50); save(); }
 // Direct'ga «uy» deb yozgan odam: obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
 async function handleDm(senderId, text) {
-  const info = await igGet(`${senderId}?fields=username,profile_pic,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
-  if (!info.username) return;
-  const existing = db.residents.find((x) => x.username === cleanName(info.username));
-  if (!KEYWORD.test(text || '')) return; // faqat «uy» deb yozganda link yuboriladi
+  if (!KEYWORD.test(text || '')) return wlog({ type: 'dm', from: senderId, text, result: "«uy» so'zi yo'q — javob berilmadi" }); // tez: API chaqirmasdan
+  let info;
+  try { info = await igGet(`${senderId}?fields=username,profile_pic,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`)); }
+  catch (e) { return wlog({ type: 'dm', from: senderId, text, error: 'Nikni olib bo\'lmadi: ' + e.message }); }
+  if (!info.username) return wlog({ type: 'dm', from: senderId, text, error: 'Instagram nikni bermadi' });
   if (info.is_user_follow_business === false) {
+    wlog({ type: 'dm', from: '@' + info.username, text, result: "obuna bo'lmagan — obuna bo'lishni so'radik" });
     return igMsg({ id: senderId }, `Assalomu alaykum! 🏠 Uy olish uchun avval @${db.settings.instagram.username || 'sahifamiz'} ga obuna bo'ling, keyin yana «uy» deb yozing.`);
   }
   const r = addFollower(info.username, 'direct');
   r.igsid = senderId; if (info.profile_pic) { r.avatar = info.profile_pic; r.avatarAt = 0; }
-  await igMsg({ id: senderId }, passText(r));
+  try { await igMsg({ id: senderId }, passText(r)); }
+  catch (e) { return wlog({ type: 'dm', from: '@' + info.username, text, error: 'Uy qurildi, lekin javob yuborilmadi: ' + e.message }); }
   r.delivered = true; db.dmQueue = db.dmQueue.filter((x) => x !== r.id); save();
+  wlog({ type: 'dm', from: '@' + info.username, text, result: '✅ uy tayyor, link va parol yuborildi' });
 }
 // Postga «uy» deb komment yozgan odam: uy quriladi va Direct'ga yopiq javob (private reply) boradi
 async function handleComment(v) {
@@ -319,6 +326,7 @@ async function api(req, res, url) {
     const b = await body(req);
     const added = [];
     db.settings.lastWebhook = Date.now();
+    if (!(b.entry || []).some((e) => (e.messaging || []).length || (e.changes || []).length)) wlog({ type: 'webhook', result: 'bo\'sh yoki noma\'lum xabar', text: JSON.stringify(b).slice(0, 200) });
     for (const e of b.entry || []) {
       for (const c of e.changes || []) {
         if (c.field === 'comments' || c.field === 'live_comments') handleComment(c.value).catch((er) => console.log('Komment xato', er.message));
@@ -494,7 +502,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, webhookLog: db.webhookLog, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
