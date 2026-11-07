@@ -75,7 +75,10 @@ mark{background:#ffe58a;border-radius:3px}
 </main></div>
 </div>
 <script>
-const $=id=>document.getElementById(id);let T=sessionStorage.getItem('adm')||'';
+const $=id=>document.getElementById(id);
+const DIRTY=new Set();document.addEventListener('input',e=>{const c=e.target.closest('[data-sec]');if(c&&!e.target.classList.contains('tsearch'))DIRTY.add(c)});
+const busy=id=>{const el=$(id);const c=el&&el.closest('[data-sec]');return c&&(DIRTY.has(c)||c.contains(document.activeElement))};
+const setV=(id,v)=>{if(!busy(id))$(id).value=v};let T=sessionStorage.getItem('adm')||'';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function call(u,d){const r=await fetch(u,{method:d?'POST':'GET',headers:{'Content-Type':'application/json','x-admin-token':T},body:d?JSON.stringify(d):undefined});const j=await r.json();if(r.status===401){T='';sessionStorage.removeItem('adm');show();}if(!r.ok)throw new Error(j.error);return j}
 $('go').onclick=async()=>{try{const j=await call('/api/admin/login',{login:$('lg').value,password:$('pw').value});T=j.token;sessionStorage.setItem('adm',T);show()}catch(e){alert(e.message)}};
@@ -87,10 +90,10 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('plots').innerHTML='<tr><th>Kim</th><th>Nima</th><th>Joy</th><th>Narx</th><th>Aloqa</th><th>Holat</th><th></th></tr>'+d.plots.slice().reverse().map(p=>`<tr><td><a href="https://instagram.com/${esc(p.owner)}" target="_blank">@${esc(p.owner)}</a></td><td>${esc(p.type)}<br><b>${esc(p.name)}</b></td><td>${p.sotix||''} sotix (${p.area} m²)<br><span class="muted">${esc(p.mahalla)} ${esc(p.street)}</span></td><td>${p.price.toLocaleString('ru-RU')} ${esc(cur)}</td><td>${esc(p.contact)}</td><td>${ST[p.status]}</td><td>${p.status!=='sold'?`<button class="ok" onclick="setP('${p.id}','sold')">To'landi — sotish</button>`:''} ${p.status!=='rejected'?`<button class="no" onclick="setP('${p.id}','rejected')">Rad etish</button>`:''}</td></tr>`).join('');
  $('rc').textContent=d.residents.length;
  const sh=d.shop;window._shop=sh;const shRow=(t,k,v)=>`<label>${esc(k)}<input type="number" data-t="${t}" data-k="${esc(k)}" value="${v}"></label>`;
- $('shH').innerHTML=Object.entries(sh.houses).map(([k,v])=>shRow('houses',k,v)).join('');$('shC').innerHTML=Object.entries(sh.cars).map(([k,v])=>shRow('cars',k,v)).join('');$('shR').value=sh.repaint;
+ if(!busy('shH')){$('shH').innerHTML=Object.entries(sh.houses).map(([k,v])=>shRow('houses',k,v)).join('');$('shC').innerHTML=Object.entries(sh.cars).map(([k,v])=>shRow('cars',k,v)).join('');$('shR').value=sh.repaint;}
  const tx=await call('/api/admin/tx');$('txs').innerHTML='<tr><th>Vaqt</th><th>Kim</th><th>Summa</th><th>Nima</th><th>Qoldiq</th></tr>'+tx.tx.map(t=>`<tr><td>${new Date(t.at).toLocaleString()}</td><td>@${esc(t.user)}</td><td style="color:${t.amount>0?'#1fa463':'#e24b4b'}">${t.amount>0?'+':''}${t.amount.toLocaleString('ru-RU')}</td><td>${esc(t.text)}</td><td>${(t.balance||0).toLocaleString('ru-RU')}</td></tr>`).join('');
  $('res').innerHTML='<tr><th>Username</th><th>💰 Hamyon</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a><div class="muted">${esc(r.style)} · 🚗 ${esc(r.car)}</div></td><td><b>${(r.balance||0).toLocaleString('ru-RU')}</b><div class="row" style="flex-wrap:nowrap;margin-top:4px"><input type="number" id="amt_${r.id}" placeholder="summa" style="width:110px"><button class="ok" onclick="giveMoney('${r.id}',1)">+</button><button class="no" onclick="giveMoney('${r.id}',-1)">−</button></div></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
- $('price').value=d.settings.pricePerSotix;$('cur').value=cur;
+ setV('price',d.settings.pricePerSotix);setV('cur',cur);
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
  const fs=d.followerStats||[];if(fs.length){const now=fs[fs.length-1],dayAgo=fs.find(x=>x.at>Date.now()-864e5)||fs[0],wk=fs.find(x=>x.at>Date.now()-7*864e5)||fs[0];const wait=Math.max(0,now.count-(d.browserWatcher?.followers||d.residentsFromFollow||0));
  $('fstat').innerHTML=`<div style="font-size:28px;font-weight:700;color:#1d2433">${now.count.toLocaleString('ru-RU')} obunachi</div>Oxirgi 24 soat: <b style="color:#1fa463">${now.count-dayAgo.count>=0?'+':''}${now.count-dayAgo.count}</b> · 7 kun: <b>${now.count-wk.count>=0?'+':''}${now.count-wk.count}</b> · yangilangan: ${new Date(now.at).toLocaleTimeString()}<br>${wait?`⏳ Taxminan <b>${wait}</b> ta obunachining uyi hali qurilmagan — kompyuterda instagram.com ochilganda (yoki ular Direct'ga «uy» yozganda) avtomatik quriladi.`:'✅ Barcha obunachilarga uy qurilgan.'}`;}
@@ -100,24 +103,24 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('nb_xarita').textContent=ko.joyi_nomalum_mahallalar.filter(n=>!placed(n,'mahalla')).length||'';
  $('cpl').innerHTML='<tr><th>Nomi</th><th>Turi</th><th>Mahallasi</th><th>Joyi</th><th></th></tr>'+rows.map(r=>{const p=placed(r.n,r.k);return `<tr><td><b>${esc(r.n)}</b></td><td>${r.k==='mahalla'?'📍 mahalla':'🛣️ ko\'cha'}</td><td>${esc(p?.mahalla||r.m||'')}</td><td>${p?`✅ ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`:(r.k==='kocha'?'<span class="muted">xaritada nomi bo\'yicha qidiriladi</span>':'❌ kiritilmagan')}</td><td><button class="ghost" onclick="cpEdit('${esc(r.n).replace(/'/g,"\\'")}','${r.k}','${esc(r.m||'').replace(/'/g,"\\'")}')">${p?'O\'zgartirish':'Joyini kiritish'}</button>${p?` <button class="no" onclick="cpDel('${esc(r.n).replace(/'/g,"\\'")}','${r.k}')">O'chirish</button>`:''}</td></tr>`}).join('');
  const bw=d.browserWatcher;$('bwst').textContent=bw&&Date.now()-bw.at<90000?(bw.error?'⚠️ '+bw.error:'✅ ishlayapti · '+bw.followers+' obunachi'):(bw?'❌ to\'xtagan (oxirgi: '+new Date(bw.at).toLocaleTimeString()+')':'❌ o\'rnatilmagan');
- const w=d.watcher;$('wuser').value=w.username||'';$('wst').textContent=w.connected?'✅ ulangan':'❌ ulanmagan';
+ const w=d.watcher;setV('wuser',w.username||'');$('wst').textContent=w.connected?'✅ ulangan':'❌ ulanmagan';
  $('winfo').textContent=(w.lastCheck?'Oxirgi tekshiruv: '+new Date(w.lastCheck).toLocaleString():'')+(w.lastError?' · ⚠️ '+w.lastError:'');
  const pw=await call('/api/admin/passwords');window._pw=pw.list;
- $('dpw').value=pw.defaultPass;$('dminfo').textContent=`Obuna bosganga uy avtomatik quriladi. Link va parol Direct'ga faqat «uy» deb yozganda boradi. Birinchi kirishda parol almashtiriladi.`+(pw.dmError?' · ⚠️ '+pw.dmError:'');
+ setV('dpw',pw.defaultPass);$('dminfo').textContent=`Obuna bosganga uy avtomatik quriladi. Link va parol Direct'ga faqat «uy» deb yozganda boradi. Birinchi kirishda parol almashtiriladi.`+(pw.dmError?' · ⚠️ '+pw.dmError:'');
  $('pwc').textContent=pw.list.length;const SRC={follow:'👀 obuna',direct:'💬 «uy»',comment:'💬 komment',admin:'✍️ admin',webhook:'🔗 webhook',instagram:'📸 IG'};
  $('pws').innerHTML='<tr><th>Nik</th><th>Qachon / qayerdan</th><th>Parol</th><th>Link yuborildi</th><th>Kirgan</th><th></th></tr>'+pw.list.map((r,i)=>`<tr><td><a href="https://instagram.com/${esc(r.username)}" target="_blank">@${esc(r.username)}</a></td><td class="muted">${new Date(r.createdAt).toLocaleString()}<br>${SRC[r.source]||esc(r.source||'')}</td><td><code>${esc(r.password)}</code></td><td>${r.delivered?'📩 yuborildi':'⏳'}</td><td>${r.loggedIn?'✅':'—'}</td><td>${r.canDm?`<button class="ghost" onclick="resend('${r.id}')">Qayta yuborish</button>`:''} <button class="ghost" onclick="sendPw(${i})">Qo'lda</button></td></tr>`).join('');
- const ig=d.settings.instagram;$('igid').value=ig.igUserId||'';$('igvt').value=ig.verifyToken||'';
+ const ig=d.settings.instagram;setV('igid',ig.igUserId||'');setV('igvt',ig.verifyToken||'');
  $('igst').textContent=ig.hasToken?('✅ ulangan'+(ig.username?' — @'+ig.username:'')):'❌ ulanmagan';
  $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code> · Oxirgi webhook: ${d.lastWebhook?new Date(d.lastWebhook).toLocaleString():'hali kelmagan'}${ig.expiresAt?' · Token muddati: '+new Date(ig.expiresAt).toLocaleDateString():''}${ig.oauthReady?'':' · ⚠️ IG_APP_ID/IG_APP_SECRET sozlanmagan'}${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
  $('mc').textContent=d.messageCount;const ch=await call('/api/admin/chats');
  $('chats').innerHTML='<tr><th>Kimdan</th><th>Kimga</th><th>Xabar</th><th>Vaqt</th></tr>'+ch.messages.slice().reverse().map(m=>`<tr><td>@${esc(m.from)}</td><td>@${esc(m.to)}</td><td>${esc(m.text)}</td><td>${new Date(m.at).toLocaleString()}</td></tr>`).join('');}
 $('bwinstall').onclick=()=>{window.open('/shahrisabz-watcher.user.js?t='+T,'_blank')};
 $('wsave').onclick=async()=>{try{const a=await call('/api/admin/watcher',{username:$('wuser').value,sessionid:$('wsess').value,csrftoken:$('wcsrf').value,dsUserId:$('wds').value});$('wsess').value='';alert(a.added.length+' ta yangi obunachiga uy qurildi');load()}catch(e){alert(e.message);load()}};
-$('dpwsave').onclick=async()=>{try{await call('/api/admin/default-pass',{password:$('dpw').value});alert('Saqlandi');load()}catch(e){alert(e.message)}};
+$('dpwsave').onclick=async()=>{try{await call('/api/admin/default-pass',{password:$('dpw').value});DIRTY.delete($('dpw').closest('[data-sec]'));alert('Saqlandi');load()}catch(e){alert(e.message)}};
 async function resend(id){await call('/api/admin/resend',{id});alert('Navbatga qo\'yildi');load()}
 async function sendPw(i){const r=window._pw[i];try{await navigator.clipboard.writeText(r.text)}catch{}alert("Xabar matni nusxalandi — Direct'da qo'ying (Ctrl+V)");window.open('https://ig.me/m/'+r.username,'_blank');await call('/api/admin/delivered',{id:r.id});load()}
 $('igoauth').onclick=()=>{location.href='/api/instagram/connect?t='+T};
-$('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';alert('Saqlandi');load()};
+$('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';DIRTY.delete($('igid').closest('[data-sec]'));alert('Saqlandi');load()};
 $('igtest').onclick=async()=>{try{const a=await call('/api/admin/instagram/test',{});alert(`✅ @${a.username} — ${a.followers_count} obunachi, ${a.media_count} post`);load()}catch(e){alert(e.message)}};
 $('igsync').onclick=async()=>{try{const a=await call('/api/admin/instagram/sync',{});alert(a.added.length+' ta yangi uy qurildi');load()}catch(e){alert(e.message)}};
 
@@ -128,9 +131,9 @@ async function giveMoney(id,sign){const v=Math.abs(Number($('amt_'+id).value));i
 function cpEdit(n,k,m){$('cpN').value=n;$('cpK').value=k;$('cpM').value=m;$('cpC').focus();scrollTo({top:0,behavior:'smooth'})}
 async function cpDel(n,k){if(!confirm(n+' joyini o\'chirasizmi?'))return;await call('/api/admin/place',{n,kind:k,remove:true});load()}
 $('cpAdd').onclick=async()=>{try{await call('/api/admin/place',{n:$('cpN').value,kind:$('cpK').value,coords:$('cpC').value,mahalla:$('cpM').value});$('cpN').value=$('cpC').value=$('cpM').value='';alert('✅ Joyiga qo\'yildi — saytda xaritada ko\'rinadi');load()}catch(e){alert(e.message)}};
-$('shSave').onclick=async()=>{const b={houses:{},cars:{},repaint:$('shR').value};const sh=window._shop;for(const t of['houses','cars'])for(const k of Object.keys(sh[t]))b[t][k]=null;document.querySelectorAll('[data-t]').forEach(i=>{b[i.dataset.t][i.dataset.k]=i.value===''?null:Number(i.value)});await call('/api/admin/shop',b);alert('Saqlandi');load()};
+$('shSave').onclick=async()=>{try{const b={houses:{},cars:{},repaint:$('shR').value};const sh=window._shop;for(const t of['houses','cars'])for(const k of Object.keys(sh[t]))b[t][k]=null;document.querySelectorAll('#shH [data-t], #shC [data-t]').forEach(i=>{b[i.dataset.t][i.dataset.k]=i.value===''?null:Number(i.value)});await call('/api/admin/shop',b);DIRTY.delete($('shH').closest('[data-sec]'));alert('✅ Narxlar saqlandi');load()}catch(e){alert('Xato: '+e.message)}};
 $('shAdd').onclick=async()=>{const k=$('shNewK').value.trim(),v=Number($('shNewV').value);if(!k)return;await call('/api/admin/shop',{[$('shNewT').value]:{[k]:v||0}});$('shNewK').value='';$('shNewV').value='';load()};
-$('saveS').onclick=async()=>{await call('/api/admin/settings',{pricePerSotix:$('price').value,currency:$('cur').value});load()};
+$('saveS').onclick=async()=>{try{await call('/api/admin/settings',{pricePerSotix:$('price').value,currency:$('cur').value});DIRTY.delete($('price').closest('[data-sec]'));alert('✅ Joy narxi saqlandi');load()}catch(e){alert(e.message)}};
 $('markRead').onclick=async()=>{await call('/api/admin/read',{});load()};
 // ---- Bo'limlar va qidiruv ----
 let SEC=localStorage.getItem('admSec')||'bosh';
