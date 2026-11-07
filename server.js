@@ -153,12 +153,11 @@ async function igPost(pathq, payload) {
 // Direct'ga xabar yozgan odamga: uy quriladi (bo'lmasa) va parol avtomatik javob bo'lib boradi (rasmiy API, 24 soat oynasi)
 const KEYWORD = /\buy\b|уй|uy\s*kerak|^uy/i;
 const igMsg = (recipient, text) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } });
-// Direct'ga «uy» deb yozgan odam: obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
+// Direct'ga istalgan xabar yozgan odam (birinchi marta): obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
 async function handleDm(senderId, text) {
   const info = await igGet(`${senderId}?fields=username,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
   if (!info.username) return;
   const existing = db.residents.find((x) => x.username === cleanName(info.username));
-  if (!KEYWORD.test(text || '') && !existing) return; // «uy» yozmagan va uyi yo'q — oddiy xabar, tegmaymiz
   if (!KEYWORD.test(text || '') && existing?.delivered) return; // oddiy suhbat — qayta yubormaymiz
   if (info.is_user_follow_business === false) {
     return igMsg({ id: senderId }, `Assalomu alaykum! 🏠 Uy olish uchun avval @${db.settings.instagram.username || 'sahifamiz'} ga obuna bo'ling, keyin yana «uy» deb yozing.`);
