@@ -42,7 +42,7 @@ function edgeSpot() {
 
 const genPass = () => String(crypto.randomInt(100000, 1000000));
 const SITE = () => process.env.BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '');
-const passText = (r) => `Assalomu alaykum, @${r.username}! 🏠 Sizning uyingiz tayyor — Shahrisabz online shahrida!\nSayt: ${SITE() || 'saytimiz'}\nLogin: ${r.username}\nParol: ${r.mustChange ? db.settings.defaultPass : '(o\'zingiz qo\'ygan parol)'}\nBirinchi kirishda parolni o'zingiznikiga almashtirasiz.`;
+const passText = (r) => `Assalomu alaykum, @${r.username}! 🏠 Sizning uyingiz tayyor — Shahrisabz online shahrida!\nSayt: ${SITE() || 'saytimiz'}\nLogin: ${r.username}\nParol: ${r.mustChange ? db.settings.defaultPass : '(o\'zingiz qo\'ygan parol)'}\n⚠️ Saytga birinchi kirganingizda parolni o'zgartiring!`;
 function addFollower(username, source, pk) {
   const u = cleanName(username);
   if (!u) return null;
@@ -151,13 +151,32 @@ async function igPost(pathq, payload) {
   const j = await r.json(); if (j.error) throw new Error('Instagram: ' + j.error.message); return j;
 }
 // Direct'ga xabar yozgan odamga: uy quriladi (bo'lmasa) va parol avtomatik javob bo'lib boradi (rasmiy API, 24 soat oynasi)
-async function handleDm(senderId) {
-  const info = await igGet(`${senderId}?fields=username`);
+const KEYWORD = /\buy\b|уй|uy\s*kerak|^uy/i;
+const igMsg = (recipient, text) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } });
+// Direct'ga «uy» deb yozgan odam: obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
+async function handleDm(senderId, text) {
+  const info = await igGet(`${senderId}?fields=username,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
   if (!info.username) return;
+  const existing = db.residents.find((x) => x.username === cleanName(info.username));
+  if (!KEYWORD.test(text || '') && !existing) return; // «uy» yozmagan va uyi yo'q — oddiy xabar, tegmaymiz
+  if (!KEYWORD.test(text || '') && existing?.delivered) return; // oddiy suhbat — qayta yubormaymiz
+  if (info.is_user_follow_business === false) {
+    return igMsg({ id: senderId }, `Assalomu alaykum! 🏠 Uy olish uchun avval @${db.settings.instagram.username || 'sahifamiz'} ga obuna bo'ling, keyin yana «uy» deb yozing.`);
+  }
   const r = addFollower(info.username, 'direct');
-  if (!r.initialPass) { r.initialPass = genPass(); r.pass = hash(r.initialPass); }
-  await igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: senderId }, message: { text: passText(r) } });
-  r.delivered = true; r.igsid = senderId; save();
+  r.igsid = senderId;
+  await igMsg({ id: senderId }, passText(r));
+  r.delivered = true; db.dmQueue = db.dmQueue.filter((x) => x !== r.id); save();
+}
+// Postga «uy» deb komment yozgan odam: uy quriladi va Direct'ga yopiq javob (private reply) boradi
+async function handleComment(v) {
+  const u = v?.from?.username; if (!u || !v.id) return;
+  if (String(v.from.id) === String(db.settings.instagram.igUserId)) return;
+  if (!KEYWORD.test(v.text || '')) return;
+  const r = addFollower(u, 'comment');
+  if (r.delivered) return;
+  await igMsg({ comment_id: v.id }, passText(r));
+  r.delivered = true; save();
 }
 
 // ---- Obunachilarni kuzatish: akkaunt seansi (sessionid cookie) orqali obunachilar ro'yxati o'qiladi ----
@@ -261,11 +280,15 @@ async function api(req, res, url) {
     }
     const b = await body(req);
     const added = [];
+    db.settings.lastWebhook = Date.now();
     for (const e of b.entry || []) {
-      for (const c of e.changes || []) { const u = c?.value?.from?.username; if (u) { const r = addFollower(u, 'instagram'); if (r) added.push(r.username); } }
+      for (const c of e.changes || []) {
+        if (c.field === 'comments' || c.field === 'live_comments') handleComment(c.value).catch((er) => console.log('Komment xato', er.message));
+        else if (c.field === 'messages' && c.value?.sender?.id) handleDm(c.value.sender.id, c.value.message?.text).catch((er) => console.log('DM xato', er.message));
+      }
       for (const mm of e.messaging || []) {
         if (mm.message?.is_echo || !mm.sender?.id || mm.sender.id === String(db.settings.instagram.igUserId)) continue;
-        handleDm(mm.sender.id).catch((er) => console.log('DM xato', er.message));
+        handleDm(mm.sender.id, mm.message?.text).catch((er) => console.log('DM xato', er.message));
       }
     }
     return send(res, 200, { ok: true, added });
@@ -384,7 +407,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
