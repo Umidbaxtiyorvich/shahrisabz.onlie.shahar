@@ -11,6 +11,7 @@
     <div class="muted">Usernamelarni vergul yoki yangi qator bilan kiriting — har biriga shahar chekkasida avtomatik uy quriladi.</div>
     <textarea id="users" rows="3" style="width:100%;border-radius:10px;border:1px solid #cfd8e6;padding:8px"></textarea><button id="addUsers">Qo'shish</button>
     <div class="muted" id="hook"></div></div>
+  <div class="card"><h3>📈 Obunachilar soni (24/7, rasmiy)</h3><div id="fstat" class="muted">Instagram token ulanmagan</div></div>
   <div class="card"><h3>⚡ Avtomatik uy — kompyuter brauzeri orqali (tavsiya) <span id="bwst" class="muted"></span></h3>
     <ol class="muted" style="margin:0;padding-left:18px">
       <li>Chrome / Yandex brauzeriga <a href="https://www.tampermonkey.net/" target="_blank">Tampermonkey</a> kengaytmasini o'rnating.</li>
@@ -61,6 +62,8 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('res').innerHTML='<tr><th>Username</th><th>💰 Hamyon</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a><div class="muted">${esc(r.style)} · 🚗 ${esc(r.car)}</div></td><td><b>${(r.balance||0).toLocaleString('ru-RU')}</b><div class="row" style="flex-wrap:nowrap;margin-top:4px"><input type="number" id="amt_${r.id}" placeholder="summa" style="width:110px"><button class="ok" onclick="giveMoney('${r.id}',1)">+</button><button class="no" onclick="giveMoney('${r.id}',-1)">−</button></div></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
  $('price').value=d.settings.pricePerSotix;$('cur').value=cur;
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
+ const fs=d.followerStats||[];if(fs.length){const now=fs[fs.length-1],dayAgo=fs.find(x=>x.at>Date.now()-864e5)||fs[0],wk=fs.find(x=>x.at>Date.now()-7*864e5)||fs[0];const wait=Math.max(0,now.count-(d.browserWatcher?.followers||d.residentsFromFollow||0));
+ $('fstat').innerHTML=`<div style="font-size:28px;font-weight:700;color:#1d2433">${now.count.toLocaleString('ru-RU')} obunachi</div>Oxirgi 24 soat: <b style="color:#1fa463">${now.count-dayAgo.count>=0?'+':''}${now.count-dayAgo.count}</b> · 7 kun: <b>${now.count-wk.count>=0?'+':''}${now.count-wk.count}</b> · yangilangan: ${new Date(now.at).toLocaleTimeString()}<br>${wait?`⏳ Taxminan <b>${wait}</b> ta obunachining uyi hali qurilmagan — kompyuterda instagram.com ochilganda (yoki ular Direct'ga «uy» yozganda) avtomatik quriladi.`:'✅ Barcha obunachilarga uy qurilgan.'}`;}
  const bw=d.browserWatcher;$('bwst').textContent=bw&&Date.now()-bw.at<90000?(bw.error?'⚠️ '+bw.error:'✅ ishlayapti · '+bw.followers+' obunachi'):(bw?'❌ to\'xtagan (oxirgi: '+new Date(bw.at).toLocaleTimeString()+')':'❌ o\'rnatilmagan');
  const w=d.watcher;$('wuser').value=w.username||'';$('wst').textContent=w.connected?'✅ ulangan':'❌ ulanmagan';
  $('winfo').textContent=(w.lastCheck?'Oxirgi tekshiruv: '+new Date(w.lastCheck).toLocaleString():'')+(w.lastError?' · ⚠️ '+w.lastError:'');

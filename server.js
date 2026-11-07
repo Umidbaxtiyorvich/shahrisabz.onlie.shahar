@@ -286,6 +286,17 @@ async function geocodeAll() {
 }
 setTimeout(() => geocodeAll().catch((e) => console.log('Geocode:', e.message)), 5000);
 
+// ---- Obunachilar soni (rasmiy Graph API, 24/7, kompyutersiz) ----
+db.followerStats ||= [];
+async function pollFollowerCount() {
+  const ig = db.settings.instagram; if (!ig.token || !ig.igUserId) return;
+  const a = await igGet(`${ig.igUserId}?fields=followers_count`);
+  const last = db.followerStats[db.followerStats.length - 1];
+  if (!last || last.count !== a.followers_count || Date.now() - last.at > 3600e3) { db.followerStats.push({ at: Date.now(), count: a.followers_count }); db.followerStats = db.followerStats.slice(-2000); save(); }
+}
+setInterval(() => pollFollowerCount().catch((e) => console.log('Followers:', e.message)), 5 * 60 * 1000);
+setTimeout(() => pollFollowerCount().catch(() => {}), 8000);
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
@@ -501,7 +512,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
