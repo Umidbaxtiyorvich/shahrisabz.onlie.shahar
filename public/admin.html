@@ -56,7 +56,7 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
 $('wsave').onclick=async()=>{try{const a=await call('/api/admin/watcher',{username:$('wuser').value,sessionid:$('wsess').value,csrftoken:$('wcsrf').value,dsUserId:$('wds').value});$('wsess').value='';alert(a.added.length+' ta yangi obunachiga uy qurildi');load()}catch(e){alert(e.message);load()}};
 $('dpwsave').onclick=async()=>{try{await call('/api/admin/default-pass',{password:$('dpw').value});alert('Saqlandi');load()}catch(e){alert(e.message)}};
 async function resend(id){await call('/api/admin/resend',{id});alert('Navbatga qo\'yildi');load()}
-async function sendPw(i){const r=window._pw[i];try{await navigator.clipboard.writeText(r.text)}catch{}alert('Xabar matni nusxalandi — Direct'da qo\'ying (Ctrl+V)');window.open('https://ig.me/m/'+r.username,'_blank');await call('/api/admin/delivered',{id:r.id});load()}
+async function sendPw(i){const r=window._pw[i];try{await navigator.clipboard.writeText(r.text)}catch{}alert("Xabar matni nusxalandi — Direct'da qo'ying (Ctrl+V)");window.open('https://ig.me/m/'+r.username,'_blank');await call('/api/admin/delivered',{id:r.id});load()}
 $('igoauth').onclick=()=>{location.href='/api/instagram/connect?t='+T};
 $('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';alert('Saqlandi');load()};
 $('igtest').onclick=async()=>{try{const a=await call('/api/admin/instagram/test',{});alert(`✅ @${a.username} — ${a.followers_count} obunachi, ${a.media_count} post`);load()}catch(e){alert(e.message)}};
