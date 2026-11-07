@@ -1,18 +1,43 @@
 <!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shahrisabz Admin</title><link rel="stylesheet" href="style.css">
-<style>.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:6px 0}.picks label{font-size:13px}html,body{overflow:auto;height:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}</style></head>
+<style>.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:6px 0}.picks label{font-size:13px}html,body{overflow:auto;height:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}
+html,body{background:#f2f5fb}.wrap{max-width:none;padding:0}
+#loginBox{max-width:420px;margin:80px auto}
+#panel:not(.hidden){display:flex;min-height:100vh}
+.side{width:230px;flex:none;background:linear-gradient(180deg,#1d2b53,#2f4b9a);color:#fff;padding:16px 10px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{padding:6px 10px 16px;font-size:18px;display:flex;flex-direction:column}.brand small{opacity:.7;font-size:12px}
+.nav{background:transparent;color:#dfe7ff;text-align:left;font-weight:500;padding:10px 12px;border-radius:10px;display:flex;align-items:center;gap:8px;text-decoration:none;font-size:14px}
+.nav:hover{background:rgba(255,255,255,.1)}.nav.on{background:#fff;color:#1d2b53;font-weight:700}
+.nb{margin-left:auto;background:#e24b4b;color:#fff;border-radius:10px;padding:0 7px;font-size:12px}.nb:empty{display:none}
+.main{flex:1;min-width:0;padding:16px;display:flex;flex-direction:column;gap:14px}
+.topbar{position:sticky;top:0;z-index:5;background:rgba(242,245,251,.95);backdrop-filter:blur(6px);padding:6px 0;display:flex;gap:10px;align-items:center}
+.topbar input{font-size:15px;padding:11px 14px;border-radius:12px}.menu{display:none}
+.main .card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(20,40,90,.06);padding:16px 18px}
+.main .card h3{margin:0 0 10px;font-size:17px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.stat{background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 2px 12px rgba(20,40,90,.06);display:flex;flex-direction:column}
+.stat small{color:#5b6577}.stat b{font-size:28px;color:#2f4b9a}
+.tsearch{margin:4px 0 8px;max-width:360px}
+table th{background:#f6f8fc;position:sticky;top:0}table tr:hover td{background:#fafbff}
+mark{background:#ffe58a;border-radius:3px}
+.hidesec{display:none!important}.norow{display:none}
+@media(max-width:800px){.side{position:fixed;left:-260px;z-index:30;transition:left .2s}.side.open{left:0}.menu{display:inline-block}}
+</style></head>
 <body><div class="wrap">
 <div class="card" id="loginBox"><h2>🔐 Admin panel</h2><div class="row"><input id="lg" placeholder="Login"><input id="pw" type="password" placeholder="Parol"><button id="go">Kirish</button></div></div>
-<div id="panel" class="hidden" style="display:flex;flex-direction:column;gap:14px">
-  <div class="card"><h3>🔔 Xabarlar <span class="badge" id="unread">0</span> <button class="ghost" id="markRead">Hammasini o'qildi</button></h3><div id="notes"></div></div>
-  <div class="card"><h3>📐 Joy sotib olish so'rovlari</h3><div class="scroll"><table id="plots"></table></div></div>
-  <div class="card"><h3>➕ Instagram obunachilarni qo'shish</h3>
+<div id="panel" class="hidden">
+<aside class="side"><div class="brand">🏙️ <b>Shahrisabz</b><small>Admin panel</small></div><button class="nav" data-go="bosh">📊 Bosh sahifa<span class="nb" id="nb_bosh"></span></button><button class="nav" data-go="aholi">🏠 Aholi<span class="nb" id="nb_aholi"></span></button><button class="nav" data-go="obunachilar">👥 Obunachilar<span class="nb" id="nb_obunachilar"></span></button><button class="nav" data-go="joylar">📐 Joy so'rovlari<span class="nb" id="nb_joylar"></span></button><button class="nav" data-go="hamyon">💸 Hamyon<span class="nb" id="nb_hamyon"></span></button><button class="nav" data-go="chat">💬 Yozishmalar<span class="nb" id="nb_chat"></span></button><button class="nav" data-go="dokon">🛒 Narxlar<span class="nb" id="nb_dokon"></span></button><button class="nav" data-go="instagram">📸 Instagram<span class="nb" id="nb_instagram"></span></button><a class="nav" href="/" target="_blank">🌐 Saytni ochish</a><button class="nav" id="logoutA">🚪 Chiqish</button></aside>
+<main class="main"><div class="topbar"><button class="ghost menu" id="menuBtn">☰</button><input id="gsearch" placeholder="🔍 Hamma joydan qidirish: nik, joy nomi, xabar, summa…"><span class="muted" id="gcount"></span></div>
+<div class="stats" data-sec="bosh"><div class="stat"><small>Aholi</small><b id="st_res">0</b></div><div class="stat"><small>Joylar</small><b id="st_plots">0</b></div><div class="stat"><small>O'qilmagan xabar</small><b id="st_unread">0</b></div><div class="stat"><small>Yozishmalar</small><b id="st_msgs">0</b></div></div>
+<div class="card" data-sec="bosh"><h3>🔔 Xabarlar <span class="badge" id="unread">0</span> <button class="ghost" id="markRead">Hammasini o'qildi</button></h3><div id="notes"></div></div>
+<div class="card" data-sec="joylar"><h3>📐 Joy sotib olish so'rovlari</h3><div class="scroll"><input class="tsearch" data-t="plots" placeholder="🔍 Shu jadvaldan qidirish…"><table id="plots"></table></div></div>
+<div class="card" data-sec="obunachilar"><h3>➕ Instagram obunachilarni qo'shish</h3>
     <div class="muted">Usernamelarni vergul yoki yangi qator bilan kiriting — har biriga shahar chekkasida avtomatik uy quriladi.</div>
     <textarea id="users" rows="3" style="width:100%;border-radius:10px;border:1px solid #cfd8e6;padding:8px"></textarea><button id="addUsers">Qo'shish</button>
     <div class="muted" id="hook"></div></div>
-  <div class="card"><h3>📈 Obunachilar soni (24/7, rasmiy)</h3><div id="fstat" class="muted">Instagram token ulanmagan</div></div>
-  <div class="card"><h3>⚡ Avtomatik uy — kompyuter brauzeri orqali (tavsiya) <span id="bwst" class="muted"></span></h3>
+<div class="card" data-sec="bosh"><h3>📈 Obunachilar soni (24/7, rasmiy)</h3><div id="fstat" class="muted">Instagram token ulanmagan</div></div>
+<div class="card" data-sec="instagram"><h3>⚡ Avtomatik uy — kompyuter brauzeri orqali (tavsiya) <span id="bwst" class="muted"></span></h3>
     <ol class="muted" style="margin:0;padding-left:18px">
       <li>Chrome / Yandex brauzeriga <a href="https://www.tampermonkey.net/" target="_blank">Tampermonkey</a> kengaytmasini o'rnating.</li>
       <li>Pastdagi tugmani bosing → Tampermonkey "O'rnatish" (Install) ni bosing.</li>
@@ -20,30 +45,31 @@
     </ol>
     <div class="row"><button class="ok" id="bwinstall">📥 Kuzatuvchi skriptni o'rnatish</button></div>
     <div class="muted">Har 20 soniyada yangi obunachi tekshiriladi → uy avtomatik quriladi va shu yerda ko'rinadi. Link Direct'ga faqat «uy» deb yozganda boradi. Kompyuter yoqiq va tab ochiq bo'lishi kerak.</div></div>
-  <div class="card"><h3>👀 Obunachilarni kuzatish (avtomatik uy) <span id="wst" class="muted"></span></h3>
+<div class="card" data-sec="instagram"><h3>👀 Obunachilarni kuzatish (avtomatik uy) <span id="wst" class="muted"></span></h3>
     <div class="muted">Kompyuterda instagram.com ga <b>shahrisabz.online.shahar</b> bilan kiring → F12 → Application → Cookies → instagram.com → <b>sessionid</b>, <b>csrftoken</b> va <b>ds_user_id</b> qiymatlarini nusxalab shu yerga qo'ying. Har 20 soniyada yangi obunachilar tekshiriladi va ularga uy + parol yaratiladi.</div>
     <input id="wuser" placeholder="Instagram nik"><input id="wsess" type="password" placeholder="sessionid"><input id="wcsrf" type="password" placeholder="csrftoken (Direct yuborish uchun)"><input id="wds" placeholder="ds_user_id">
     <div class="row"><button class="ok" id="wsave">Ulash va hozir tekshirish</button></div><div class="muted" id="winfo"></div></div>
-  <div class="card"><h3>👥 Obunachilar va parollar (<span id="pwc">0</span>)</h3>
+<div class="card" data-sec="obunachilar"><h3>👥 Obunachilar va parollar (<span id="pwc">0</span>)</h3>
     <div class="row"><input id="dpw" style="max-width:220px" placeholder="Umumiy parol"><button id="dpwsave">Umumiy parolni saqlash</button></div>
     <div class="muted" id="dminfo"></div>
-    <div class="scroll" style="max-height:360px;overflow:auto"><table id="pws"></table></div></div>
-  <div class="card"><h3>📸 Instagram akkauntni ulash <span id="igst" class="muted"></span></h3>
+    <div class="scroll" style="max-height:360px;overflow:auto"><input class="tsearch" data-t="pws" placeholder="🔍 Shu jadvaldan qidirish…"><table id="pws"></table></div></div>
+<div class="card" data-sec="instagram"><h3>📸 Instagram akkauntni ulash <span id="igst" class="muted"></span></h3>
     <div class="muted">Meta Developers'da Instagram Business akkaunt uchun <b>Access Token</b> va <b>Instagram akkaunt ID</b> oling va shu yerga kiriting.</div>
     <div class="row"><button class="ok" id="igoauth">📸 Instagram bilan ulash (avtomatik token)</button></div><div class="muted">Yoki qo'lda:</div><input id="igid" placeholder="Instagram akkaunt ID (masalan 1784...)"><input id="igtok" type="password" placeholder="Access token (o'zgartirmasangiz bo'sh qoldiring)"><input id="igvt" placeholder="Webhook verify token">
     <div class="row"><button id="igsave">Saqlash</button><button class="ghost" id="igtest">Ulanishni tekshirish</button><button class="ok" id="igsync">Hozir sinxronlash</button></div>
     <div class="muted" id="iginfo"></div></div>
-  <div class="card"><h3>💬 Aholi yozishmalari (<span id="mc">0</span>)</h3><div class="scroll" style="max-height:300px;overflow:auto"><table id="chats"></table></div></div>
-  <div class="card"><h3>🛒 Do'kon narxlari (uy dizaynlari, mashinalar)</h3>
+<div class="card" data-sec="chat"><h3>💬 Aholi yozishmalari (<span id="mc">0</span>)</h3><div class="scroll" style="max-height:300px;overflow:auto"><input class="tsearch" data-t="chats" placeholder="🔍 Shu jadvaldan qidirish…"><table id="chats"></table></div></div>
+<div class="card" data-sec="dokon"><h3>🛒 Do'kon narxlari (uy dizaynlari, mashinalar)</h3>
     <div class="muted">Hamma boshida "oddiy" uy bilan boshlaydi. Narxni 0 qilsangiz — bepul. Yangi nom qo'shish mumkin (masalan: "saroy"), o'chirish uchun narxni bo'sh qoldiring.</div>
     <b>Uy / bino dizaynlari</b><div id="shH" class="picks"></div><b>Mashinalar</b><div id="shC" class="picks"></div>
     <div class="row"><label>Rang o'zgartirish narxi <input id="shR" type="number" style="max-width:160px"></label></div>
     <div class="row"><input id="shNewK" placeholder="Yangi nom" style="max-width:160px"><select id="shNewT" style="max-width:140px"><option value="houses">uy dizayni</option><option value="cars">mashina</option></select><input id="shNewV" type="number" placeholder="Narx" style="max-width:160px"><button class="ghost" id="shAdd">Qo'shish</button></div>
     <button class="ok" id="shSave">Narxlarni saqlash</button></div>
-  <div class="card"><h3>💸 Hamyon tarixi</h3><div class="scroll" style="max-height:260px;overflow:auto"><table id="txs"></table></div></div>
-  <div class="card"><h3>⚙️ Joy narxi</h3><div class="row"><label>1 sotix narxi <input id="price" type="number" style="max-width:200px"></label> <input id="cur" style="max-width:100px"><button id="saveS">Saqlash</button></div><div class="muted">1 sotix = 100 m². Joy narxi = sotix soni × 1 sotix narxi.</div></div>
-  <div class="card"><h3>🏠 Aholi (<span id="rc">0</span>)</h3><div class="scroll"><table id="res"></table></div></div>
-</div></div>
+<div class="card" data-sec="hamyon"><h3>💸 Hamyon tarixi</h3><div class="scroll" style="max-height:260px;overflow:auto"><input class="tsearch" data-t="txs" placeholder="🔍 Shu jadvaldan qidirish…"><table id="txs"></table></div></div>
+<div class="card" data-sec="dokon"><h3>⚙️ Joy narxi</h3><div class="row"><label>1 sotix narxi <input id="price" type="number" style="max-width:200px"></label> <input id="cur" style="max-width:100px"><button id="saveS">Saqlash</button></div><div class="muted">1 sotix = 100 m². Joy narxi = sotix soni × 1 sotix narxi.</div></div>
+<div class="card" data-sec="aholi"><h3>🏠 Aholi (<span id="rc">0</span>)</h3><div class="scroll"><input class="tsearch" data-t="res" placeholder="🔍 Shu jadvaldan qidirish…"><table id="res"></table></div></div>
+</main></div>
+</div>
 <script>
 const $=id=>document.getElementById(id);let T=sessionStorage.getItem('adm')||'';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,5 +120,33 @@ $('shSave').onclick=async()=>{const b={houses:{},cars:{},repaint:$('shR').value}
 $('shAdd').onclick=async()=>{const k=$('shNewK').value.trim(),v=Number($('shNewV').value);if(!k)return;await call('/api/admin/shop',{[$('shNewT').value]:{[k]:v||0}});$('shNewK').value='';$('shNewV').value='';load()};
 $('saveS').onclick=async()=>{await call('/api/admin/settings',{pricePerSotix:$('price').value,currency:$('cur').value});load()};
 $('markRead').onclick=async()=>{await call('/api/admin/read',{});load()};
+// ---- Bo'limlar va qidiruv ----
+let SEC=localStorage.getItem('admSec')||'bosh';
+function showSec(k){SEC=k;try{localStorage.setItem('admSec',k)}catch{}document.querySelectorAll('.nav[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===k));$('gsearch').value='';applyFilters();document.querySelector('.side').classList.remove('open');scrollTo(0,0)}
+document.querySelectorAll('.nav[data-go]').forEach(b=>b.onclick=()=>showSec(b.dataset.go));
+$('menuBtn').onclick=()=>document.querySelector('.side').classList.toggle('open');
+$('logoutA').onclick=()=>{sessionStorage.removeItem('adm');location.reload()};
+const norm=t=>String(t||'').toLowerCase().replace(/[ʻʼ‘’`']/g,"'");
+function filterTable(tb,q){if(!tb)return 0;let n=0;[...tb.rows].forEach((r,i)=>{if(i===0)return;const hit=!q||norm(r.textContent).includes(q);r.classList.toggle('norow',!hit);if(hit)n++});return n}
+function applyFilters(){
+  const g=norm($('gsearch').value.trim());let total=0;
+  document.querySelectorAll('.main [data-sec]').forEach(c=>{
+    let show=g?false:c.dataset.sec===SEC;
+    c.querySelectorAll('table').forEach(tb=>{const own=c.querySelector(`.tsearch[data-t="${tb.id}"]`);const q=g||norm(own?.value.trim());const n=filterTable(tb,q);if(g&&n){show=true;total+=n}});
+    if(g&&!c.querySelector('table')&&norm(c.textContent).includes(g)&&c.id!=='x'){c.querySelectorAll('.n').forEach(x=>x.classList.toggle('norow',!norm(x.textContent).includes(g)));if(c.querySelector('.n:not(.norow)')){show=true}}
+    else c.querySelectorAll('.n').forEach(x=>x.classList.remove('norow'));
+    c.classList.toggle('hidesec',!show);
+  });
+  $('gcount').textContent=g?`${total} ta natija`:'';
+  const cnt=id=>{const t=$(id);return t?Math.max(0,t.rows.length-1):0};
+  $('st_res').textContent=cnt('res');$('st_plots').textContent=cnt('plots');$('st_unread').textContent=$('unread').textContent;$('st_msgs').textContent=$('mc').textContent;
+  $('nb_bosh').textContent=+$('unread').textContent?$('unread').textContent:'';
+  $('nb_joylar').textContent=document.querySelectorAll('#plots tr').length?[...document.querySelectorAll('#plots tr')].filter(r=>r.textContent.includes('kutilmoqda')).length||'':'';
+}
+$('gsearch').oninput=applyFilters;
+document.querySelectorAll('.tsearch').forEach(i=>i.oninput=applyFilters);
+let fT;new MutationObserver(()=>{clearTimeout(fT);fT=setTimeout(applyFilters,50)}).observe($('panel'),{childList:true,subtree:true});
+showSec(SEC);
+
 show();setInterval(()=>T&&load(),20000);
 </script></body></html>
