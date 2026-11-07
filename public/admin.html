@@ -11,6 +11,13 @@
     <div class="muted">Usernamelarni vergul yoki yangi qator bilan kiriting — har biriga shahar chekkasida avtomatik uy quriladi.</div>
     <textarea id="users" rows="3" style="width:100%;border-radius:10px;border:1px solid #cfd8e6;padding:8px"></textarea><button id="addUsers">Qo'shish</button>
     <div class="muted" id="hook"></div></div>
+  <div class="card"><h3>👀 Obunachilarni kuzatish (avtomatik uy) <span id="wst" class="muted"></span></h3>
+    <div class="muted">Kompyuterda instagram.com ga <b>shahrisabz.online.shahar</b> bilan kiring → F12 → Application → Cookies → instagram.com → <b>sessionid</b> qiymatini nusxalab shu yerga qo'ying. Har 5 daqiqada yangi obunachilar tekshiriladi va ularga uy + parol yaratiladi.</div>
+    <input id="wuser" placeholder="Instagram nik"><input id="wsess" type="password" placeholder="sessionid">
+    <div class="row"><button class="ok" id="wsave">Ulash va hozir tekshirish</button></div><div class="muted" id="winfo"></div></div>
+  <div class="card"><h3>🔑 Parollar (yangi obunachilar)</h3>
+    <div class="muted">Obunachi @akkauntga Direct'da istalgan xabar yozsa — parol avtomatik javob bo'lib boradi (webhook kerak). Yoki "Direct ochish" → matnni qo'ying.</div>
+    <div class="scroll" style="max-height:360px;overflow:auto"><table id="pws"></table></div></div>
   <div class="card"><h3>📸 Instagram akkauntni ulash <span id="igst" class="muted"></span></h3>
     <div class="muted">Meta Developers'da Instagram Business akkaunt uchun <b>Access Token</b> va <b>Instagram akkaunt ID</b> oling va shu yerga kiriting.</div>
     <div class="row"><button class="ok" id="igoauth">📸 Instagram bilan ulash (avtomatik token)</button></div><div class="muted">Yoki qo'lda:</div><input id="igid" placeholder="Instagram akkaunt ID (masalan 1784...)"><input id="igtok" type="password" placeholder="Access token (o'zgartirmasangiz bo'sh qoldiring)"><input id="igvt" placeholder="Webhook verify token">
@@ -35,11 +42,17 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('res').innerHTML='<tr><th>Username</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
  $('price').value=d.settings.pricePerM2;$('cur').value=cur;
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
+ const w=d.watcher;$('wuser').value=w.username||'';$('wst').textContent=w.connected?'✅ ulangan':'❌ ulanmagan';
+ $('winfo').textContent=(w.lastCheck?'Oxirgi tekshiruv: '+new Date(w.lastCheck).toLocaleString():'')+(w.lastError?' · ⚠️ '+w.lastError:'');
+ const pw=await call('/api/admin/passwords');window._pw=pw.list;
+ $('pws').innerHTML='<tr><th>Nik</th><th>Parol</th><th>Holat</th><th></th></tr>'+pw.list.map((r,i)=>`<tr><td>@${esc(r.username)}</td><td><code>${esc(r.password)}</code></td><td>${r.loggedIn?'✅ kirgan':r.delivered?'📩 yuborilgan':'⏳ yuborilmagan'}</td><td><button class="ghost" onclick="sendPw(${i})">Direct ochish</button></td></tr>`).join('');
  const ig=d.settings.instagram;$('igid').value=ig.igUserId||'';$('igvt').value=ig.verifyToken||'';
  $('igst').textContent=ig.hasToken?('✅ ulangan'+(ig.username?' — @'+ig.username:'')):'❌ ulanmagan';
  $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code>${ig.expiresAt?' · Token muddati: '+new Date(ig.expiresAt).toLocaleDateString():''}${ig.oauthReady?'':' · ⚠️ IG_APP_ID/IG_APP_SECRET sozlanmagan'}${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
  $('mc').textContent=d.messageCount;const ch=await call('/api/admin/chats');
  $('chats').innerHTML='<tr><th>Kimdan</th><th>Kimga</th><th>Xabar</th><th>Vaqt</th></tr>'+ch.messages.slice().reverse().map(m=>`<tr><td>@${esc(m.from)}</td><td>@${esc(m.to)}</td><td>${esc(m.text)}</td><td>${new Date(m.at).toLocaleString()}</td></tr>`).join('');}
+$('wsave').onclick=async()=>{try{const a=await call('/api/admin/watcher',{username:$('wuser').value,sessionid:$('wsess').value});$('wsess').value='';alert(a.added.length+' ta yangi obunachiga uy qurildi');load()}catch(e){alert(e.message);load()}};
+async function sendPw(i){const r=window._pw[i];try{await navigator.clipboard.writeText(r.text)}catch{}alert('Xabar matni nusxalandi — Direct'da qo\'ying (Ctrl+V)');window.open('https://ig.me/m/'+r.username,'_blank');await call('/api/admin/delivered',{id:r.id});load()}
 $('igoauth').onclick=()=>{location.href='/api/instagram/connect?t='+T};
 $('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';alert('Saqlandi');load()};
 $('igtest').onclick=async()=>{try{const a=await call('/api/admin/instagram/test',{});alert(`✅ @${a.username} — ${a.followers_count} obunachi, ${a.media_count} post`);load()}catch(e){alert(e.message)}};

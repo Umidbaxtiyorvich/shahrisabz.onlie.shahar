@@ -17,6 +17,7 @@ function loadDb() {
 }
 let db = loadDb();
 db.messages ||= [];
+db.settings.watcher ||= { sessionid: '', username: 'shahrisabz.online.shahar', pk: '', initialized: false, lastCheck: 0, lastError: '' };
 db.settings.instagram ||= { token: '', igUserId: '', verifyToken: '', username: '', lastSync: 0 };
 const IG_APP_ID = process.env.IG_APP_ID || '';
 const IG_APP_SECRET = process.env.IG_APP_SECRET || '';
@@ -37,19 +38,23 @@ function edgeSpot() {
   return { x: Math.round(Math.cos(a) * r), z: Math.round(Math.sin(a) * r) };
 }
 
+const genPass = () => String(crypto.randomInt(100000, 1000000));
+const SITE = () => process.env.BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '');
+const passText = (r) => `Assalomu alaykum, @${r.username}! 🏠 Shahrisabz online shahrida uyingiz qurildi.\nKirish: ${SITE() || 'saytimiz'}\nLogin: ${r.username}\nParol: ${r.initialPass}\nParolni hech kimga bermang.`;
 function addFollower(username, source) {
   const u = cleanName(username);
   if (!u) return null;
   let r = db.residents.find((x) => x.username === u);
   if (r) return r;
   const s = edgeSpot();
-  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source };
+  const pw = genPass();
+  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, delivered: false };
   db.residents.push(r);
   save();
   return r;
 }
 
-const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, claimed: !!r.pass });
+const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, claimed: !!r.lastLogin });
 const pubPlot = (p) => ({ id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
@@ -134,6 +139,57 @@ async function getOsm() {
 }
 getOsm().catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
 
+async function igPost(pathq, payload) {
+  const ig = db.settings.instagram;
+  const base = ig.kind === 'instagram' ? 'https://graph.instagram.com/v21.0' : 'https://graph.facebook.com/v21.0';
+  const r = await fetch(`${base}/${pathq}?access_token=${encodeURIComponent(ig.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const j = await r.json(); if (j.error) throw new Error('Instagram: ' + j.error.message); return j;
+}
+// Direct'ga xabar yozgan odamga: uy quriladi (bo'lmasa) va parol avtomatik javob bo'lib boradi (rasmiy API, 24 soat oynasi)
+async function handleDm(senderId) {
+  const info = await igGet(`${senderId}?fields=username`);
+  if (!info.username) return;
+  const r = addFollower(info.username, 'direct');
+  if (!r.initialPass) { r.initialPass = genPass(); r.pass = hash(r.initialPass); }
+  await igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: senderId }, message: { text: passText(r) } });
+  r.delivered = true; r.igsid = senderId; save();
+}
+
+// ---- Obunachilarni kuzatish: akkaunt seansi (sessionid cookie) orqali obunachilar ro'yxati o'qiladi ----
+// Diqqat: bu Instagram'ning norasmiy veb-API'si. Juda tez-tez so'ralsa Instagram vaqtincha cheklashi mumkin.
+const IGW = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', 'X-IG-App-ID': '936619743392459', Accept: '*/*' };
+async function igWeb(url) {
+  const w = db.settings.watcher;
+  const r = await fetch(url, { headers: { ...IGW, Cookie: `sessionid=${w.sessionid}; ds_user_id=${w.pk || ''}` }, signal: AbortSignal.timeout(30000) });
+  if (r.status === 401 || r.status === 403) throw new Error('Seans yaroqsiz — admin panelda sessionid ni yangilang');
+  if (!r.ok) throw new Error('Instagram javobi: ' + r.status);
+  const j = await r.json(); if (j.status === 'fail') throw new Error(j.message || 'Instagram rad etdi'); return j;
+}
+async function watchFollowers() {
+  const w = db.settings.watcher;
+  if (!w.sessionid) throw new Error('Avval sessionid kiriting');
+  if (!w.pk) {
+    const pr = await igWeb(`https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(w.username)}`);
+    w.pk = pr?.data?.user?.id; if (!w.pk) throw new Error('Akkaunt topilmadi'); save();
+  }
+  const added = []; let maxId = '', pages = 0;
+  do {
+    const j = await igWeb(`https://www.instagram.com/api/v1/friendships/${w.pk}/followers/?count=100${maxId ? '&max_id=' + maxId : ''}`);
+    let knownInPage = 0;
+    for (const u of j.users || []) {
+      const before = db.residents.length; addFollower(u.username, 'follow');
+      if (db.residents.length > before) added.push(u.username); else knownInPage++;
+    }
+    maxId = j.next_max_id || '';
+    if (w.initialized && knownInPage === (j.users || []).length) break; // ro'yxat eng yangidan boshlanadi — tanishlarga yetdik
+    pages++; if (pages > 50) break;
+    await new Promise((ok) => setTimeout(ok, 1500));
+  } while (maxId);
+  w.initialized = true; w.lastCheck = Date.now(); w.lastError = ''; save();
+  return { ok: true, added };
+}
+setInterval(() => { if (db.settings.watcher.sessionid) watchFollowers().catch((e) => { db.settings.watcher.lastError = e.message; save(); console.log('Watcher:', e.message); }); }, 5 * 60 * 1000);
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
@@ -156,9 +212,12 @@ async function api(req, res, url) {
     }
     const b = await body(req);
     const added = [];
-    for (const e of b.entry || []) for (const c of e.changes || e.messaging || []) {
-      const u = c?.value?.from?.username || c?.value?.username || c?.sender?.username;
-      if (u) { const r = addFollower(u, 'instagram'); if (r) added.push(r.username); }
+    for (const e of b.entry || []) {
+      for (const c of e.changes || []) { const u = c?.value?.from?.username; if (u) { const r = addFollower(u, 'instagram'); if (r) added.push(r.username); } }
+      for (const mm of e.messaging || []) {
+        if (mm.message?.is_echo || !mm.sender?.id || mm.sender.id === String(db.settings.instagram.igUserId)) continue;
+        handleDm(mm.sender.id).catch((er) => console.log('DM xato', er.message));
+      }
     }
     return send(res, 200, { ok: true, added });
   }
@@ -192,8 +251,9 @@ async function api(req, res, url) {
     const r = db.residents.find((x) => x.username === cleanName(b.username));
     if (!r) return send(res, 404, { error: "Bunday obunachi topilmadi. Avval Instagram sahifamizga obuna bo'ling." });
     if (!b.password || b.password.length < 4) return send(res, 400, { error: "Parol kamida 4 belgi bo'lsin" });
-    if (r.pass) { if (r.pass !== hash(b.password)) return send(res, 403, { error: "Parol noto'g'ri" }); }
-    else { r.pass = hash(b.password); save(); }
+    if (r.pass) { if (r.pass !== hash(b.password)) return send(res, 403, { error: "Parol noto'g'ri. Parolni olish uchun @shahrisabz.online.shahar ga Direct'da istalgan xabar yozing." }); }
+    else r.pass = hash(b.password);
+    r.lastLogin = Date.now(); save();
     return send(res, 200, { ok: true, resident: pub(r) });
   }
   if (m === 'POST' && p === '/api/move') {
@@ -266,7 +326,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -294,8 +354,18 @@ async function api(req, res, url) {
       try { return send(res, 200, await igSync()); } catch (e) { return send(res, 400, { error: e.message }); }
     }
     if (p === '/api/admin/chats') return send(res, 200, { messages: db.messages.slice(-500) });
+
+    if (p === '/api/admin/watcher') {
+      const w = db.settings.watcher;
+      if (b.sessionid) { w.sessionid = decodeURIComponent(String(b.sessionid).trim()); w.pk = ''; }
+      if (b.username) { w.username = cleanName(b.username); w.pk = ''; }
+      save();
+      try { return send(res, 200, await watchFollowers()); } catch (e) { w.lastError = e.message; save(); return send(res, 400, { error: e.message }); }
+    }
+    if (p === '/api/admin/passwords') return send(res, 200, { list: db.residents.filter((r) => r.initialPass).sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r.id, username: r.username, password: r.initialPass, delivered: !!r.delivered, loggedIn: !!r.lastLogin, text: passText(r) })) });
+    if (p === '/api/admin/delivered') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.delivered = true; save(); } return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
-    if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { delete r.pass; save(); } return send(res, 200, { ok: true }); }
+    if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.initialPass = genPass(); r.pass = hash(r.initialPass); r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
     if (p === '/api/admin/settings') { const v = Number(b.pricePerM2); if (v > 0) db.settings.pricePerM2 = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/read') { db.notifications.forEach((n) => (n.read = true)); save(); return send(res, 200, { ok: true }); }
   }
