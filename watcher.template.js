@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shahrisabz Online — obunachi kuzatuvchi
 // @namespace    shahrisabz-online
-// @version      1.0
+// @version      1.1
 // @description  Yangi obunachilarga avtomatik uy quradi (Direct'ga link faqat «uy» deb yozganda boradi)
 // @match        https://www.instagram.com/*
 // @grant        GM_xmlhttpRequest
@@ -50,7 +50,7 @@
         const users = j.users || [];
         const fresh = users.filter((u) => !seen.has(u.username));
         for (const u of fresh) {
-          const res = await site('/api/follow', { username: u.username, pk: u.pk || u.pk_id, source: 'browser' });
+          const res = await site('/api/follow', { username: u.username, pk: u.pk || u.pk_id, avatar: u.profile_pic_url, source: 'browser' });
           seen.add(u.username); found++;
         }
         keep();

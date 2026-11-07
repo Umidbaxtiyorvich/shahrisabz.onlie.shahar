@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shahrisabz Admin</title><link rel="stylesheet" href="style.css">
-<style>html,body{overflow:auto;height:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}</style></head>
+<style>.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:6px 0}.picks label{font-size:13px}html,body{overflow:auto;height:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}</style></head>
 <body><div class="wrap">
 <div class="card" id="loginBox"><h2>🔐 Admin panel</h2><div class="row"><input id="lg" placeholder="Login"><input id="pw" type="password" placeholder="Parol"><button id="go">Kirish</button></div></div>
 <div id="panel" class="hidden" style="display:flex;flex-direction:column;gap:14px">
@@ -33,6 +33,13 @@
     <div class="row"><button id="igsave">Saqlash</button><button class="ghost" id="igtest">Ulanishni tekshirish</button><button class="ok" id="igsync">Hozir sinxronlash</button></div>
     <div class="muted" id="iginfo"></div></div>
   <div class="card"><h3>💬 Aholi yozishmalari (<span id="mc">0</span>)</h3><div class="scroll" style="max-height:300px;overflow:auto"><table id="chats"></table></div></div>
+  <div class="card"><h3>🛒 Do'kon narxlari (uy dizaynlari, mashinalar)</h3>
+    <div class="muted">Hamma boshida "oddiy" uy bilan boshlaydi. Narxni 0 qilsangiz — bepul. Yangi nom qo'shish mumkin (masalan: "saroy"), o'chirish uchun narxni bo'sh qoldiring.</div>
+    <b>Uy / bino dizaynlari</b><div id="shH" class="picks"></div><b>Mashinalar</b><div id="shC" class="picks"></div>
+    <div class="row"><label>Rang o'zgartirish narxi <input id="shR" type="number" style="max-width:160px"></label></div>
+    <div class="row"><input id="shNewK" placeholder="Yangi nom" style="max-width:160px"><select id="shNewT" style="max-width:140px"><option value="houses">uy dizayni</option><option value="cars">mashina</option></select><input id="shNewV" type="number" placeholder="Narx" style="max-width:160px"><button class="ghost" id="shAdd">Qo'shish</button></div>
+    <button class="ok" id="shSave">Narxlarni saqlash</button></div>
+  <div class="card"><h3>💸 Hamyon tarixi</h3><div class="scroll" style="max-height:260px;overflow:auto"><table id="txs"></table></div></div>
   <div class="card"><h3>⚙️ Narx</h3><div class="row"><input id="price" type="number" style="max-width:200px"> <input id="cur" style="max-width:100px"><button id="saveS">Saqlash</button></div><div class="muted">1 m² narxi. Joy narxi = maydon × narx.</div></div>
   <div class="card"><h3>🏠 Aholi (<span id="rc">0</span>)</h3><div class="scroll"><table id="res"></table></div></div>
 </div></div>
@@ -48,7 +55,10 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('notes').innerHTML=d.notifications.slice(0,50).map(n=>`<div class="n ${n.read?'read':''}">${esc(n.text)}<div class="muted">${new Date(n.at).toLocaleString()}</div></div>`).join('')||'<div class="muted">Xabar yo\'q</div>';
  $('plots').innerHTML='<tr><th>Kim</th><th>Nima</th><th>Joy</th><th>Narx</th><th>Aloqa</th><th>Holat</th><th></th></tr>'+d.plots.slice().reverse().map(p=>`<tr><td><a href="https://instagram.com/${esc(p.owner)}" target="_blank">@${esc(p.owner)}</a></td><td>${esc(p.type)}<br><b>${esc(p.name)}</b></td><td>${p.area} m²<br><span class="muted">${esc(p.mahalla)} ${esc(p.street)}</span></td><td>${p.price.toLocaleString('ru-RU')} ${esc(cur)}</td><td>${esc(p.contact)}</td><td>${ST[p.status]}</td><td>${p.status!=='sold'?`<button class="ok" onclick="setP('${p.id}','sold')">To'landi — sotish</button>`:''} ${p.status!=='rejected'?`<button class="no" onclick="setP('${p.id}','rejected')">Rad etish</button>`:''}</td></tr>`).join('');
  $('rc').textContent=d.residents.length;
- $('res').innerHTML='<tr><th>Username</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
+ const sh=d.shop;window._shop=sh;const shRow=(t,k,v)=>`<label>${esc(k)}<input type="number" data-t="${t}" data-k="${esc(k)}" value="${v}"></label>`;
+ $('shH').innerHTML=Object.entries(sh.houses).map(([k,v])=>shRow('houses',k,v)).join('');$('shC').innerHTML=Object.entries(sh.cars).map(([k,v])=>shRow('cars',k,v)).join('');$('shR').value=sh.repaint;
+ const tx=await call('/api/admin/tx');$('txs').innerHTML='<tr><th>Vaqt</th><th>Kim</th><th>Summa</th><th>Nima</th><th>Qoldiq</th></tr>'+tx.tx.map(t=>`<tr><td>${new Date(t.at).toLocaleString()}</td><td>@${esc(t.user)}</td><td style="color:${t.amount>0?'#1fa463':'#e24b4b'}">${t.amount>0?'+':''}${t.amount.toLocaleString('ru-RU')}</td><td>${esc(t.text)}</td><td>${(t.balance||0).toLocaleString('ru-RU')}</td></tr>`).join('');
+ $('res').innerHTML='<tr><th>Username</th><th>💰 Hamyon</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a><div class="muted">${esc(r.style)} · 🚗 ${esc(r.car)}</div></td><td><b>${(r.balance||0).toLocaleString('ru-RU')}</b><div class="row" style="flex-wrap:nowrap;margin-top:4px"><input type="number" id="amt_${r.id}" placeholder="summa" style="width:110px"><button class="ok" onclick="giveMoney('${r.id}',1)">+</button><button class="no" onclick="giveMoney('${r.id}',-1)">−</button></div></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
  $('price').value=d.settings.pricePerM2;$('cur').value=cur;
  $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
  const bw=d.browserWatcher;$('bwst').textContent=bw&&Date.now()-bw.at<90000?(bw.error?'⚠️ '+bw.error:'✅ ishlayapti · '+bw.followers+' obunachi'):(bw?'❌ to\'xtagan (oxirgi: '+new Date(bw.at).toLocaleTimeString()+')':'❌ o\'rnatilmagan');
@@ -76,6 +86,9 @@ $('igsync').onclick=async()=>{try{const a=await call('/api/admin/instagram/sync'
 async function setP(id,status){await call('/api/admin/plot',{id,status});load()}
 async function act(a,id){await call('/api/admin/resident/'+a,{id});load()}
 $('addUsers').onclick=async()=>{const j=await call('/api/admin/followers',{usernames:$('users').value});alert(j.added.length+' ta uy qurildi');$('users').value='';load()};
+async function giveMoney(id,sign){const v=Math.abs(Number($('amt_'+id).value));if(!v)return alert('Summani kiriting');try{await call('/api/admin/balance',{id,amount:sign*v});load()}catch(e){alert(e.message)}}
+$('shSave').onclick=async()=>{const b={houses:{},cars:{},repaint:$('shR').value};const sh=window._shop;for(const t of['houses','cars'])for(const k of Object.keys(sh[t]))b[t][k]=null;document.querySelectorAll('[data-t]').forEach(i=>{b[i.dataset.t][i.dataset.k]=i.value===''?null:Number(i.value)});await call('/api/admin/shop',b);alert('Saqlandi');load()};
+$('shAdd').onclick=async()=>{const k=$('shNewK').value.trim(),v=Number($('shNewV').value);if(!k)return;await call('/api/admin/shop',{[$('shNewT').value]:{[k]:v||0}});$('shNewK').value='';$('shNewV').value='';load()};
 $('saveS').onclick=async()=>{await call('/api/admin/settings',{pricePerM2:$('price').value,currency:$('cur').value});load()};
 $('markRead').onclick=async()=>{await call('/api/admin/read',{});load()};
 show();setInterval(()=>T&&load(),20000);

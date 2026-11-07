@@ -17,6 +17,12 @@ function loadDb() {
 }
 let db = loadDb();
 db.messages ||= [];
+db.tx ||= [];
+db.settings.shop ||= {
+  houses: { oddiy: 0, zamonaviy: 5000000, kottej: 12000000, villa: 25000000, minora: 50000000 },
+  cars: { yoq: 0, sedan: 3000000, jeep: 7000000, sport: 15000000, limuzin: 30000000 },
+  repaint: 200000,
+};
 db.dmQueue ||= [];
 db.settings.defaultPass ||= 'shahrisabz2026';
 db.settings.watcher ||= { sessionid: '', username: 'shahrisabz.online.shahar', pk: '', initialized: false, lastCheck: 0, lastError: '' };
@@ -57,12 +63,12 @@ function addFollower(username, source, pk) {
   return r;
 }
 
-const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, claimed: !!r.lastLogin });
-const pubPlot = (p) => ({ id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
+const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', car: r.car || 'yoq', carColor: r.carColor ?? 0, avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pubPlot = (p) => ({ style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function body(req) {
-  return new Promise((ok) => { let b = ''; req.on('data', (c) => { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', () => { try { ok(JSON.parse(b || '{}')); } catch { ok({}); } }); });
+  return new Promise((ok) => { let b = ''; req.on('data', (c) => { b += c; if (b.length > 30e6) req.destroy(); }); req.on('end', () => { try { ok(JSON.parse(b || '{}')); } catch { ok({}); } }); });
 }
 function userAuth(b) {
   const r = db.residents.find((x) => x.username === cleanName(b.username));
@@ -110,7 +116,7 @@ async function refreshIgToken() {
 setInterval(() => refreshIgToken().catch(() => {}), 24 * 3600 * 1000);
 
 // ---- Xarita ma'lumoti: server bir marta OpenStreetMap'dan yuklab, data/osm.json da saqlaydi ----
-const OSM_FILE = path.join(__dirname, 'data', 'osm.json');
+const OSM_FILE = path.join(__dirname, 'data', 'osm-v2.json');
 const OSM_BBOX = '39.015,66.775,39.105,66.885';
 let osmLoading = null;
 async function getOsm() {
@@ -118,7 +124,7 @@ async function getOsm() {
   const bundled = path.join(PUB, 'osm.json'); if (fs.existsSync(bundled)) return fs.readFileSync(bundled);
   if (osmLoading) return osmLoading;
   osmLoading = (async () => {
-    const q = `[out:json][timeout:120];(way["highway"~"^(trunk|primary|secondary|tertiary|residential|unclassified|living_street|service)$"](${OSM_BBOX});node["place"~"^(neighbourhood|suburb|quarter|village|hamlet)$"](${OSM_BBOX}););out geom;`;
+    const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road|footway|path)$"](${OSM_BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${OSM_BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${OSM_BBOX}););out center tags;`;
     const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
     for (const u of mirrors) {
       try {
@@ -128,7 +134,7 @@ async function getOsm() {
         const out = { ways: [], places: [] };
         for (const e of j.elements) {
           if (e.type === 'way' && e.geometry) out.ways.push({ t: e.tags.highway, n: e.tags['name:uz'] || e.tags.name || '', g: e.geometry.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]) });
-          else if (e.type === 'node' && e.tags?.name) out.places.push({ n: e.tags['name:uz'] || e.tags.name, lat: e.lat, lon: e.lon });
+          else if (e.tags?.name && (e.lat || e.center)) out.places.push({ n: e.tags['name:uz'] || e.tags.name, k: e.tags.place || 'mahalla', lat: e.lat ?? e.center.lat, lon: e.lon ?? e.center.lon });
         }
         if (!out.ways.length) continue;
         const buf = Buffer.from(JSON.stringify(out));
@@ -154,7 +160,7 @@ const KEYWORD = /(^|[^a-zа-я'ʻ`])(uy|уй)([^a-zа-я'ʻ`]|$)/i;
 const igMsg = (recipient, text) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } });
 // Direct'ga «uy» deb yozgan odam: obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
 async function handleDm(senderId, text) {
-  const info = await igGet(`${senderId}?fields=username,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
+  const info = await igGet(`${senderId}?fields=username,profile_pic,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
   if (!info.username) return;
   const existing = db.residents.find((x) => x.username === cleanName(info.username));
   if (!KEYWORD.test(text || '')) return; // faqat «uy» deb yozganda link yuboriladi
@@ -162,7 +168,7 @@ async function handleDm(senderId, text) {
     return igMsg({ id: senderId }, `Assalomu alaykum! 🏠 Uy olish uchun avval @${db.settings.instagram.username || 'sahifamiz'} ga obuna bo'ling, keyin yana «uy» deb yozing.`);
   }
   const r = addFollower(info.username, 'direct');
-  r.igsid = senderId;
+  r.igsid = senderId; if (info.profile_pic) { r.avatar = info.profile_pic; r.avatarAt = 0; }
   await igMsg({ id: senderId }, passText(r));
   r.delivered = true; db.dmQueue = db.dmQueue.filter((x) => x !== r.id); save();
 }
@@ -240,6 +246,22 @@ async function dmWorker() {
 }
 setInterval(() => dmWorker().catch(() => {}), 10 * 1000); // 10 soniyada 1 ta xabar
 
+function addTx(r, amount, text) { db.tx.push({ id: id(), user: r.username, amount, text, balance: r.balance || 0, at: Date.now() }); }
+const UPLOADS = path.join(__dirname, 'data', 'uploads');
+const AVATARS = path.join(__dirname, 'data', 'avatars');
+// Instagram avatarini serverda keshlaydi (CDN havolalari muddati tugaydi, brauzer esa WebGL uchun shu manzildan oladi)
+async function avatarFile(r) {
+  const f = path.join(AVATARS, r.username + '.jpg');
+  if (fs.existsSync(f) && Date.now() - (r.avatarAt || 0) < 7 * 864e5) return f;
+  if (!r.avatar) return fs.existsSync(f) ? f : null;
+  try {
+    const resp = await fetch(r.avatar, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) throw new Error(resp.status);
+    fs.mkdirSync(AVATARS, { recursive: true }); fs.writeFileSync(f, Buffer.from(await resp.arrayBuffer()));
+    r.avatarAt = Date.now(); save(); return f;
+  } catch { return fs.existsSync(f) ? f : null; }
+}
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
@@ -255,6 +277,7 @@ async function api(req, res, url) {
     const r = addFollower(b.username, b.source === 'browser' ? 'follow' : 'webhook');
     if (!r) return send(res, 400, { error: 'username kerak' });
     if (b.pk && !r.pk) { r.pk = String(b.pk); save(); }
+    if (b.avatar && /^https:\/\//.test(b.avatar) && r.avatar !== b.avatar) { r.avatar = String(b.avatar); r.avatarAt = 0; save(); }
     return send(res, 200, { ok: true, isNew: db.residents.length > before, needDm: !r.delivered, dmText: passText(r), resident: pub(r) });
   }
   if (m === 'POST' && p === '/api/follow/delivered') {
@@ -344,6 +367,35 @@ async function api(req, res, url) {
     save();
     return send(res, 200, { ok: true, resident: pub(r) });
   }
+  if (m === 'POST' && p === '/api/me') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    return send(res, 200, { balance: r.balance || 0, tx: db.tx.filter((t) => t.user === r.username).slice(-30).reverse(), shop: db.settings.shop, plots: db.plots.filter((x) => x.owner === r.username && x.status !== 'rejected').map(pubPlot) });
+  }
+  // Uy / mashina / joydagi binoni o'zgartirish — hamyondan to'lanadi
+  if (m === 'POST' && p === '/api/upgrade') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const shop = db.settings.shop;
+    const target = b.plotId ? db.plots.find((x) => x.id === b.plotId && x.owner === r.username && x.status === 'sold') : r;
+    if (!target) return send(res, 404, { error: 'Topilmadi' });
+    let cost = 0; const what = [];
+    const curStyle = target.style || 'oddiy';
+    if (b.style && b.style !== curStyle) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
+    if (!b.plotId && b.car && b.car !== (r.car || 'yoq')) { if (!(b.car in shop.cars)) return send(res, 400, { error: 'Mashina topilmadi' }); cost += shop.cars[b.car]; what.push('mashina: ' + b.car); }
+    const colorChanged = (b.color !== undefined && Number(b.color) !== (target.color ?? -1)) || (!b.plotId && b.carColor !== undefined && Number(b.carColor) !== (r.carColor ?? -1));
+    if (colorChanged && !what.length) { cost += shop.repaint; what.push("rang o'zgartirish"); }
+    if (!what.length) return send(res, 400, { error: "Hech narsa o'zgarmadi" });
+    if ((r.balance || 0) < cost) return send(res, 402, { error: `Hamyonda pul yetarli emas. Kerak: ${cost.toLocaleString('ru-RU')} ${db.settings.currency}, bor: ${(r.balance || 0).toLocaleString('ru-RU')}` });
+    r.balance = (r.balance || 0) - cost;
+    if (b.style) target.style = b.style;
+    if (b.color !== undefined) target.color = Math.max(0, Math.min(360, Number(b.color) || 0));
+    if (!b.plotId && b.car) r.car = b.car;
+    if (!b.plotId && b.carColor !== undefined) r.carColor = Math.max(0, Math.min(360, Number(b.carColor) || 0));
+    addTx(r, -cost, (b.plotId ? `"${target.name}": ` : 'Uy: ') + what.join(', '));
+    save();
+    return send(res, 200, { ok: true, balance: r.balance, cost });
+  }
   if (m === 'POST' && p === '/api/plots/request') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
@@ -359,8 +411,13 @@ async function api(req, res, url) {
       type: TYPES.includes(b.type) ? b.type : 'boshqa', name: String(b.name || '').slice(0, 60) || r.username,
       contact: String(b.contact || '').slice(0, 80), status: 'pending', mahalla: String(b.mahalla || '').slice(0, 80), street: String(b.street || '').slice(0, 80), createdAt: Date.now(),
     });
+    plot.style = 'oddiy';
+    if ((r.balance || 0) >= plot.price) { // hamyonda pul yetarli — darhol sotiladi
+      r.balance -= plot.price; plot.status = 'sold'; plot.paidFromBalance = true;
+      addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${area} m²)`);
+      db.notifications.unshift({ id: id(), plotId: plot.id, text: `✅ @${r.username} hamyonidan "${plot.name}" (${area} m²) joyini sotib oldi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
+    } else db.notifications.unshift({ id: id(), plotId: plot.id, text: `@${r.username} "${plot.name}" (${plot.type}) uchun ${area} m² joyni sotib olmoqchi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency} (hamyonda ${(r.balance || 0).toLocaleString('ru-RU')})`, read: false, at: Date.now() });
     db.plots.push(plot);
-    db.notifications.unshift({ id: id(), plotId: plot.id, text: `@${r.username} "${plot.name}" (${plot.type}) uchun ${area} m² joyni sotib olmoqchi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
     save();
     return send(res, 200, { ok: true, plot: pubPlot(plot) });
   }
@@ -373,8 +430,18 @@ async function api(req, res, url) {
     if (p === '/api/chat/send') {
       const to = cleanName(b.to), text = String(b.text || '').trim().slice(0, 2000);
       if (!db.residents.some((x) => x.username === to)) return send(res, 404, { error: 'Bunday uy egasi yo\'q' });
-      if (!text || to === me) return send(res, 400, { error: 'Xabar bo\'sh' });
-      const msg = { id: id(), from: me, to, text, at: Date.now(), read: false };
+      if (to === me) return send(res, 400, { error: 'O\'zingizga yozib bo\'lmaydi' });
+      const msg = { id: id(), from: me, to, text, at: Date.now(), read: false, type: 'text' };
+      if (b.file?.data) { // rasm yoki video
+        const mt = String(b.file.type || ''); const kind = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : null;
+        if (!kind) return send(res, 400, { error: 'Faqat rasm yoki video yuborish mumkin' });
+        const buf = Buffer.from(String(b.file.data).split(',').pop(), 'base64');
+        if (buf.length > 20e6) return send(res, 413, { error: 'Fayl 20 MB dan katta' });
+        const ext = (mt.split('/')[1] || 'bin').replace(/[^a-z0-9]/g, '').slice(0, 5);
+        const fn = id() + id() + '.' + ext; fs.mkdirSync(UPLOADS, { recursive: true }); fs.writeFileSync(path.join(UPLOADS, fn), buf);
+        Object.assign(msg, { type: kind, url: '/uploads/' + fn });
+      } else if (isFinite(b.lat) && isFinite(b.lon)) Object.assign(msg, { type: 'location', lat: +b.lat, lon: +b.lon, label: String(b.label || '').slice(0, 120) });
+      else if (!text) return send(res, 400, { error: 'Xabar bo\'sh' });
       db.messages.push(msg); save();
       return send(res, 200, { ok: true, message: msg });
     }
@@ -390,7 +457,7 @@ async function api(req, res, url) {
         if (x.from !== me && x.to !== me) continue;
         const o = x.from === me ? x.to : x.from;
         const c = conv[o] ||= { with: o, last: '', at: 0, unread: 0 };
-        c.last = x.text; c.at = x.at; if (x.to === me && !x.read) c.unread++;
+        c.last = x.type === 'image' ? '📷 Rasm' : x.type === 'video' ? '🎬 Video' : x.type === 'location' ? '📍 Lokatsiya' : x.text; c.at = x.at; if (x.to === me && !x.read) c.unread++;
       }
       return send(res, 200, { conversations: Object.values(conv).sort((a, b) => b.at - a.at) });
     }
@@ -405,7 +472,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, lastWebhook: db.settings.lastWebhook || 0, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -447,6 +514,19 @@ async function api(req, res, url) {
     if (p === '/api/admin/default-pass') { const v = String(b.password || ''); if (v.length < 4) return send(res, 400, { error: 'Kamida 4 belgi' }); const old = db.settings.defaultPass; db.settings.defaultPass = v; db.residents.forEach((r) => { if (r.mustChange || r.pass === hash(old)) { r.pass = hash(v); r.mustChange = true; } }); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resend') { const r = db.residents.find((x) => x.id === b.id); if (r && r.pk) { r.delivered = false; r.dmTries = 0; db.dmQueue.unshift(r.id); save(); } return send(res, 200, { ok: true, queued: !!(r && r.pk) }); }
     if (p === '/api/admin/delivered') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.delivered = true; save(); } return send(res, 200, { ok: true }); }
+    if (p === '/api/admin/balance') {
+      const r = db.residents.find((x) => x.id === b.id); const amt = Math.round(Number(b.amount));
+      if (!r || !isFinite(amt) || !amt) return send(res, 400, { error: "Summa noto'g'ri" });
+      r.balance = (r.balance || 0) + amt; addTx(r, amt, amt > 0 ? "Admin pul tashladi" : "Admin pul oldi"); save();
+      return send(res, 200, { ok: true, balance: r.balance });
+    }
+    if (p === '/api/admin/shop') {
+      const sh = db.settings.shop;
+      for (const k of ['houses', 'cars']) if (b[k]) for (const [n, v] of Object.entries(b[k])) { const nn = String(n).trim().toLowerCase().slice(0, 20); if (!nn) continue; if (v === null) delete sh[k][nn]; else if (Number(v) >= 0) sh[k][nn] = Math.round(Number(v)); }
+      if (Number(b.repaint) >= 0) sh.repaint = Math.round(Number(b.repaint));
+      save(); return send(res, 200, { ok: true, shop: sh });
+    }
+    if (p === '/api/admin/tx') return send(res, 200, { tx: db.tx.slice(-300).reverse() });
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.pass = hash(db.settings.defaultPass); r.mustChange = true; delete r.plainPass; r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
     if (p === '/api/admin/settings') { const v = Number(b.pricePerM2); if (v > 0) db.settings.pricePerM2 = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }
@@ -471,6 +551,19 @@ http.createServer(async (req, res) => {
       const site = SITE() || `https://${req.headers.host}`;
       const js = fs.readFileSync(path.join(__dirname, 'watcher.template.js'), 'utf8').replace('__SITE__', site).replace('__HOST__', new URL(site).hostname).replace('__SECRET__', FOLLOW_SECRET);
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }); return res.end(js);
+    }
+    if (url.pathname.startsWith('/uploads/')) {
+      const f = path.normalize(path.join(UPLOADS, path.basename(url.pathname)));
+      if (!f.startsWith(UPLOADS) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+      const ext = path.extname(f).slice(1);
+      res.writeHead(200, { 'Content-Type': ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', quicktime: 'video/quicktime', mov: 'video/quicktime' })[ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000' });
+      return fs.createReadStream(f).pipe(res);
+    }
+    if (url.pathname.startsWith('/avatar/')) {
+      const r = db.residents.find((x) => x.username === cleanName(decodeURIComponent(url.pathname.slice(8))));
+      const f = r && (await avatarFile(r));
+      if (!f) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(f).pipe(res);
     }
     if (url.pathname === '/osm.json') {
       const buf = await getOsm();
