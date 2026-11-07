@@ -117,15 +117,15 @@ async function refreshIgToken() {
 setInterval(() => refreshIgToken().catch(() => {}), 24 * 3600 * 1000);
 
 // ---- Xarita ma'lumoti: server bir marta OpenStreetMap'dan yuklab, data/osm.json da saqlaydi ----
-const OSM_FILE = path.join(__dirname, 'data', 'osm-v2.json');
-const OSM_BBOX = '39.015,66.775,39.105,66.885';
+const OSM_FILE = path.join(__dirname, 'data', 'osm-v3.json');
+const OSM_BBOX = '38.90,66.62,39.22,67.05'; // Shahrisabz shahri + tumani
 let osmLoading = null;
 async function getOsm() {
   if (fs.existsSync(OSM_FILE)) return fs.readFileSync(OSM_FILE);
   const bundled = path.join(PUB, 'osm.json'); if (fs.existsSync(bundled)) return fs.readFileSync(bundled);
   if (osmLoading) return osmLoading;
   osmLoading = (async () => {
-    const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road|footway|path)$"](${OSM_BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${OSM_BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${OSM_BBOX}););out center tags;`;
+    const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road)$"](${OSM_BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${OSM_BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${OSM_BBOX}););out center tags;`;
     const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
     for (const u of mirrors) {
       try {
@@ -262,6 +262,29 @@ async function avatarFile(r) {
     r.avatarAt = Date.now(); save(); return f;
   } catch { return fs.existsSync(f) ? f : null; }
 }
+
+// ---- Rasmiy ro'yxatdagi mahallalarni xaritaga joylash (Nominatim, sekundiga 1 so'rov, natija keshlanadi) ----
+const GEO_FILE = path.join(__dirname, 'data', 'geocode.json');
+let geo = {}; try { geo = JSON.parse(fs.readFileSync(GEO_FILE, 'utf8')); } catch {}
+async function geocodeAll() {
+  const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas.json'), 'utf8'));
+  const items = [...list.shahar.map((n) => [n, 'shahar']), ...list.tuman.map((n) => [n, 'tuman'])];
+  for (const [n, k] of items) {
+    const key = k + ':' + n; if (geo[key] !== undefined) continue;
+    const qs = k === 'shahar' ? [`${n}, Shahrisabz`, `${n} mahalla, Shahrisabz`] : [`${n}, Shahrisabz tumani`, `${n}, Qashqadaryo`];
+    let hit = null;
+    for (const q of qs) {
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&viewbox=66.62,39.22,67.05,38.90&bounded=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'shahrisabz-online-shahar/1.0' }, signal: AbortSignal.timeout(20000) });
+        const j = await r.json(); if (j[0]) { hit = { lat: +j[0].lat, lon: +j[0].lon }; break; }
+      } catch {}
+      await new Promise((ok) => setTimeout(ok, 1200));
+    }
+    geo[key] = hit; fs.mkdirSync(path.dirname(GEO_FILE), { recursive: true }); fs.writeFileSync(GEO_FILE, JSON.stringify(geo));
+    await new Promise((ok) => setTimeout(ok, 1200));
+  }
+}
+setTimeout(() => geocodeAll().catch((e) => console.log('Geocode:', e.message)), 5000);
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
@@ -570,6 +593,11 @@ http.createServer(async (req, res) => {
       const f = r && (await avatarFile(r));
       if (!f) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(f).pipe(res);
+    }
+    if (url.pathname === '/places.json') { // rasmiy ro'yxat + topilgan koordinatalar
+      const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas.json'), 'utf8'));
+      const out = [...list.shahar.map((n) => ({ n, k: 'shahar', ...(geo['shahar:' + n] || {}) })), ...list.tuman.map((n) => ({ n, k: 'tuman', ...(geo['tuman:' + n] || {}) }))];
+      return send(res, 200, { places: out });
     }
     if (url.pathname === '/osm.json') {
       const buf = await getOsm();

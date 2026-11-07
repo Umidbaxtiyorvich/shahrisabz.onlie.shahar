@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 const LAT0 = 39.0578, LON0 = 66.8297;
 const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110540;
 const toXZ = (lat, lon) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];
-const BBOX = '39.015,66.775,39.105,66.885';
+const BBOX = '38.90,66.62,39.22,67.05';
 
 const $ = (id) => document.getElementById(id);
 const api = async (url, data) => {
@@ -62,14 +62,14 @@ const WIDTH = { motorway: 20, trunk: 18, primary: 16, secondary: 13, tertiary: 1
 let segments = []; // {ax,az,bx,bz,name}
 let places = []; // {name,x,z}
 const streetLabels = [], placeLabels = [];
-let streetNames = [];
+let streetNames = [], officialPlaces = [];
 
 async function loadOSM() {
-  const cached = store.get('osm-shahrisabz-v2');
+  const cached = store.get('osm-shahrisabz-v3');
   if (cached) return cached;
   status('🗺️ Shahrisabz xaritasi yuklanmoqda (birinchi marta 1–2 daqiqa)…');
-  try { const r = await fetch('osm.json', { signal: AbortSignal.timeout(150000) }); if (r.ok) { const j = await r.json(); store.set('osm-shahrisabz-v2', j); return j; } } catch {}
-  const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road|footway|path)$"](${BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${BBOX}););out center tags;`;
+  try { const r = await fetch('osm.json', { signal: AbortSignal.timeout(150000) }); if (r.ok) { const j = await r.json(); store.set('osm-shahrisabz-v3', j); return j; } } catch {}
+  const q = `[out:json][timeout:180];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|track|road)$"](${BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${BBOX});relation["boundary"="administrative"]["admin_level"~"^(8|9|10|11)$"](${BBOX}););out center tags;`;
   const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   for (const u of mirrors) {
     try {
@@ -81,7 +81,7 @@ async function loadOSM() {
         if (e.type === 'way' && e.geometry) slim.ways.push({ t: e.tags.highway, n: e.tags['name:uz'] || e.tags.name || '', g: e.geometry.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]) });
         else if (e.tags?.name && (e.lat || e.center)) slim.places.push({ n: e.tags['name:uz'] || e.tags.name, k: e.tags.place || 'mahalla', lat: e.lat ?? e.center.lat, lon: e.lon ?? e.center.lon });
       }
-      store.set('osm-shahrisabz-v2', slim);
+      store.set('osm-shahrisabz-v3', slim);
       return slim;
     } catch {}
   }
@@ -123,6 +123,7 @@ function buildRoads(data) {
     l.position.set(q.x, 8, q.z); l.visible = false; scene.add(l); streetLabels.push(l);
   }
   const seenP = new Set();
+  data.places = [...data.places, ...officialPlaces.filter((o) => o.lat && !data.places.some((p) => p.n.toLowerCase().includes(o.n.toLowerCase()))).map((o) => ({ n: o.n + (o.k === 'shahar' ? ' MFY' : ''), k: o.k === 'tuman' ? 'village' : 'neighbourhood', lat: o.lat, lon: o.lon }))];
   places = data.places.map((p) => { const [x, z] = p.xz || toXZ(p.lat, p.lon); return { name: p.n, k: p.k, x, z }; }).filter((p) => { const key = p.name + Math.round(p.x / 200) + Math.round(p.z / 200); if (seenP.has(key)) return false; seenP.add(key); return true; });
   for (const p of places) { const big = /suburb|town|village/.test(p.k || ''); const l = label('📍 ' + p.name, { size: 32, bg: big ? 'rgba(47,124,246,.92)' : 'rgba(31,164,99,.9)', fg: '#fff', scale: big ? 3.2 : 2 }); l.position.set(p.x, big ? 60 : 35, p.z); l.userData.big = big; scene.add(l); placeLabels.push(l); }
   // daraxtlar (bo'sh joylar uchun bezak)
@@ -453,7 +454,7 @@ function openDesigner(plot) {
 }
 // ---- Ko'chish: xaritadan yoki manzil bo'yicha ----
 function openMove() {
-  const mahs = [...new Set(places.map((p) => p.name))].sort();
+  const mahs = [...new Set([...places.map((p) => p.name), ...officialPlaces.map((o) => o.n)])].sort();
   modal(`<h3>🚚 Qayerga ko'chasiz?</h3>
     <button id="mmap">🗺️ Xaritadan tanlash</button>
     <div class="muted" style="text-align:center">yoki manzilni kiriting</div>
@@ -466,7 +467,8 @@ function openMove() {
     const st = $('mstr').value.trim().toLowerCase(), mh = $('mmah').value.trim().toLowerCase();
     let cand = st ? segments.filter((s) => s.name && s.name.toLowerCase() === st) : [];
     if (st && !cand.length) cand = segments.filter((s) => s.name && s.name.toLowerCase().includes(st));
-    const mp = mh && places.find((p) => p.name.toLowerCase().includes(mh));
+    let mp = mh && places.find((p) => p.name.toLowerCase().includes(mh));
+    if (mh && !mp) { const o = officialPlaces.find((q) => q.n.toLowerCase().includes(mh)); if (o && !o.lat) return alert(`«${o.n}» mahallasi rasmiy ro'yxatda bor, lekin xaritadagi joyi hali aniqlanmagan. Xaritadan tanlab ko'ching.`); }
     if (!cand.length && mp) { const n = nearestRoad(mp.x, mp.z); if (n) cand = [n.s]; }
     if (!cand.length) return alert("Bunday ko'cha yoki mahalla topilmadi");
     if (mp) cand.sort((a, b) => Math.hypot((a.ax + a.bx) / 2 - mp.x, (a.az + a.bz) / 2 - mp.z) - Math.hypot((b.ax + b.bx) / 2 - mp.x, (b.az + b.bz) / 2 - mp.z));
@@ -562,6 +564,7 @@ let frame = 0;
 // ---- Boshlash ----
 (async () => {
   refresh().catch(() => {});
+  try { officialPlaces = (await (await fetch('places.json')).json()).places; } catch {}
   const data = await loadOSM();
   if (data) { buildRoads(data); status(''); }
   else { buildRoads(fallbackGrid()); status("⚠️ OpenStreetMap ma'lumoti yuklanmadi — namunaviy to'r ko'rsatilmoqda"); }
