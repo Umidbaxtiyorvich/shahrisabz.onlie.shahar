@@ -63,6 +63,17 @@ let segments = []; // {ax,az,bx,bz,name}
 let places = []; // {name,x,z}
 const streetLabels = [], placeLabels = [];
 let streetNames = [], officialPlaces = [];
+// Mahalla chegaralari: [x,z] ko'pburchaklar
+let mahallaPolys = [];
+function drawMahallaBorders() {
+  const pos = [];
+  mahallaPolys = officialPlaces.map((o) => ({ n: o.n, rings: o.rings.map((r) => r.map(([lo, la]) => toXZ(la, lo))) }));
+  for (const m of mahallaPolys) for (const r of m.rings) for (let i = 0; i < r.length - 1; i++) pos.push(r[i][0], 1.2, r[i][1], r[i + 1][0], 1.2, r[i + 1][1]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x1fa463, transparent: true, opacity: .75 })));
+}
+function inRing(x, z, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, zi] = r[i], [xj, zj] = r[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; }
+const mahallaAt = (x, z) => mahallaPolys.find((m) => m.rings.some((r) => inRing(x, z, r)))?.n || '';
 
 async function loadOSM() {
   const cached = store.get('osm-shahrisabz-v4');
@@ -123,9 +134,12 @@ function buildRoads(data) {
     l.position.set(q.x, 8, q.z); l.visible = false; scene.add(l); streetLabels.push(l);
   }
   const seenP = new Set();
-  data.places = [...data.places, ...officialPlaces.filter((o) => o.lat && !data.places.some((p) => p.n.toLowerCase().includes(o.n.toLowerCase()))).map((o) => ({ n: o.n + (o.k === 'shahar' ? ' MFY' : ''), k: o.k === 'tuman' ? 'village' : 'neighbourhood', lat: o.lat, lon: o.lon }))];
+  // Rasmiy mahallalar (chegaralari bilan) asosiy; OSM'dagi qolgan joy nomlari qo'shimcha
+  const offNames = new Set(officialPlaces.map((o) => o.n.toLowerCase()));
+  data.places = [...officialPlaces.map((o) => ({ n: o.n, k: o.k === 'tuman' ? 'village' : 'neighbourhood', lat: o.lat, lon: o.lon })), ...data.places.filter((p) => !offNames.has(p.n.toLowerCase()) && !officialPlaces.length)];
+  drawMahallaBorders();
   places = data.places.map((p) => { const [x, z] = p.xz || toXZ(p.lat, p.lon); return { name: p.n, k: p.k, x, z }; }).filter((p) => { const key = p.name + Math.round(p.x / 200) + Math.round(p.z / 200); if (seenP.has(key)) return false; seenP.add(key); return true; });
-  for (const p of places) { const big = /suburb|town|village/.test(p.k || ''); const l = label('📍 ' + p.name, { size: 32, bg: big ? 'rgba(47,124,246,.92)' : 'rgba(31,164,99,.9)', fg: '#fff', scale: big ? 3.2 : 2 }); l.position.set(p.x, big ? 60 : 35, p.z); l.userData.big = big; scene.add(l); placeLabels.push(l); }
+  for (const p of places) { const big = /suburb|town|village/.test(p.k || ''); const l = label('📍 ' + p.name, { size: 32, bg: big ? 'rgba(47,124,246,.92)' : 'rgba(31,164,99,.9)', fg: '#fff', scale: big ? 3.2 : 2.8 }); l.position.set(p.x, big ? 60 : 35, p.z); l.userData.big = big; scene.add(l); placeLabels.push(l); }
   // daraxtlar (bo'sh joylar uchun bezak)
   const treeG = new THREE.ConeGeometry(5, 14, 6); treeG.translate(0, 9, 0);
   const trees = new THREE.InstancedMesh(treeG, new THREE.MeshLambertMaterial({ color: 0x5cc96b }), 1500);
@@ -149,7 +163,7 @@ function nearestStreetName(x, z) {
   for (const s of segments) { if (!s.name) continue; const d = Math.hypot((s.ax + s.bx) / 2 - x, (s.az + s.bz) / 2 - z); if (d < bd) { bd = d; best = s.name; } }
   return bd < 400 ? best : '';
 }
-const nearestMahalla = (x, z) => places.reduce((b, p) => { const d = Math.hypot(p.x - x, p.z - z); return d < b.d ? { d, n: p.name } : b; }, { d: Infinity, n: '' }).n;
+const nearestMahalla = (x, z) => mahallaAt(x, z) || places.reduce((b, p) => { const d = Math.hypot(p.x - x, p.z - z); return d < b.d ? { d, n: p.name } : b; }, { d: Infinity, n: '' }).n;
 
 // ---- Uylar va binolar ----
 const objects = new THREE.Group(); scene.add(objects);
@@ -468,7 +482,7 @@ function openMove() {
     let cand = st ? segments.filter((s) => s.name && s.name.toLowerCase() === st) : [];
     if (st && !cand.length) cand = segments.filter((s) => s.name && s.name.toLowerCase().includes(st));
     let mp = mh && places.find((p) => p.name.toLowerCase().includes(mh));
-    if (mh && !mp) { const o = officialPlaces.find((q) => q.n.toLowerCase().includes(mh)); if (o && !o.lat) return alert(`«${o.n}» mahallasi rasmiy ro'yxatda bor, lekin xaritadagi joyi hali aniqlanmagan. Xaritadan tanlab ko'ching.`); }
+    if (mh && !mp) { const o = officialPlaces.find((q) => q.n.toLowerCase().includes(mh)); if (o) mp = { name: o.n, x: toXZ(o.lat, o.lon)[0], z: toXZ(o.lat, o.lon)[1] }; }
     if (!cand.length && mp) { const n = nearestRoad(mp.x, mp.z); if (n) cand = [n.s]; }
     if (!cand.length) return alert("Bunday ko'cha yoki mahalla topilmadi");
     if (mp) cand.sort((a, b) => Math.hypot((a.ax + a.bx) / 2 - mp.x, (a.az + a.bz) / 2 - mp.z) - Math.hypot((b.ax + b.bx) / 2 - mp.x, (b.az + b.bz) / 2 - mp.z));
@@ -564,7 +578,7 @@ let frame = 0;
 // ---- Boshlash ----
 (async () => {
   refresh().catch(() => {});
-  try { officialPlaces = (await (await fetch('places.json')).json()).places; } catch {}
+  try { officialPlaces = (await (await fetch('mahallas-geo.json')).json()).mahallalar; } catch {}
   const data = await loadOSM();
   if (data) { buildRoads(data); status(''); }
   else {

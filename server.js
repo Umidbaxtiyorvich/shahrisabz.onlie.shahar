@@ -265,28 +265,7 @@ async function avatarFile(r) {
   } catch { return fs.existsSync(f) ? f : null; }
 }
 
-// ---- Rasmiy ro'yxatdagi mahallalarni xaritaga joylash (Nominatim, sekundiga 1 so'rov, natija keshlanadi) ----
-const GEO_FILE = path.join(__dirname, 'data', 'geocode.json');
-let geo = {}; try { geo = JSON.parse(fs.readFileSync(GEO_FILE, 'utf8')); } catch {}
-async function geocodeAll() {
-  const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas.json'), 'utf8'));
-  const items = [...list.shahar.map((n) => [n, 'shahar']), ...list.tuman.map((n) => [n, 'tuman'])];
-  for (const [n, k] of items) {
-    const key = k + ':' + n; if (geo[key] !== undefined) continue;
-    const qs = k === 'shahar' ? [`${n}, Shahrisabz`, `${n} mahalla, Shahrisabz`] : [`${n}, Shahrisabz tumani`, `${n}, Qashqadaryo`];
-    let hit = null;
-    for (const q of qs) {
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&viewbox=66.62,39.22,67.05,38.90&bounded=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'shahrisabz-online-shahar/1.0' }, signal: AbortSignal.timeout(20000) });
-        const j = await r.json(); if (j[0]) { hit = { lat: +j[0].lat, lon: +j[0].lon }; break; }
-      } catch {}
-      await new Promise((ok) => setTimeout(ok, 1200));
-    }
-    geo[key] = hit; fs.mkdirSync(path.dirname(GEO_FILE), { recursive: true }); fs.writeFileSync(GEO_FILE, JSON.stringify(geo));
-    await new Promise((ok) => setTimeout(ok, 1200));
-  }
-}
-setTimeout(() => geocodeAll().catch((e) => console.log('Geocode:', e.message)), 5000);
+// geocodeAll endi kerak emas: mahallalar public/mahallas-geo.json da aniq chegaralari bilan bor
 
 // ---- Obunachilar soni (rasmiy Graph API, 24/7, kompyutersiz) ----
 db.followerStats ||= [];
@@ -608,9 +587,8 @@ http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(f).pipe(res);
     }
     if (url.pathname === '/places.json') { // rasmiy ro'yxat + topilgan koordinatalar
-      const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas.json'), 'utf8'));
-      const out = [...list.shahar.map((n) => ({ n, k: 'shahar', ...(geo['shahar:' + n] || {}) })), ...list.tuman.map((n) => ({ n, k: 'tuman', ...(geo['tuman:' + n] || {}) }))];
-      return send(res, 200, { places: out });
+      const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas-geo.json'), 'utf8')).mahallalar;
+      return send(res, 200, { places: list.map(({ n, k, lat, lon }) => ({ n, k, lat, lon })) });
     }
     if (url.pathname === '/osm.json') {
       if (req.method === 'HEAD') { const ok = fs.existsSync(OSM_FILE); res.writeHead(ok ? 200 : 503); if (!ok) getOsm().catch(() => {}); return res.end(); }

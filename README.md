@@ -41,3 +41,5 @@ Ma'lumotlar `data/db.json` da saqlanadi. Xarita © OpenStreetMap hissadorlari.
    IG_APP_ID=... IG_APP_SECRET=... BASE_URL=https://SAYTINGIZ npm start
    ```
 7. `/admin` → **"📸 Instagram bilan ulash"** → @shahrisabz.online.shahar bilan kiring → ruxsat bering. Sayt 60 kunlik tokenni o'zi oladi va har kuni yangilab turadi.
+
+Mahalla chegaralari: [fabioakitaa/mahallalar](https://github.com/fabioakitaa/mahallalar) (Shahrisabz shahri — 40, tumani — 57 ta). Yangilash: `python3 tools/import-mahallas.py <mahallalar papkasi>`
