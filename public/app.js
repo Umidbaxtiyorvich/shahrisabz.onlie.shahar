@@ -66,12 +66,13 @@ const streetLabels = [];
 async function loadOSM() {
   const cached = store.get('osm-shahrisabz-v1');
   if (cached) return cached;
-  try { const r = await fetch('osm.json'); if (r.ok) return await r.json(); } catch {}
+  status('🗺️ Shahrisabz xaritasi yuklanmoqda (birinchi marta 1–2 daqiqa)…');
+  try { const r = await fetch('osm.json', { signal: AbortSignal.timeout(150000) }); if (r.ok) { const j = await r.json(); store.set('osm-shahrisabz-v1', j); return j; } } catch {}
   const q = `[out:json][timeout:90];(way["highway"~"^(trunk|primary|secondary|tertiary|residential|unclassified|living_street|service)$"](${BBOX});node["place"~"^(neighbourhood|suburb|quarter|village|hamlet)$"](${BBOX}););out geom;`;
   const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   for (const u of mirrors) {
     try {
-      const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+      const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: AbortSignal.timeout(60000) });
       if (!r.ok) continue;
       const j = await r.json();
       const slim = { ways: [], places: [] };
@@ -366,6 +367,7 @@ let frame = 0;
 
 // ---- Boshlash ----
 (async () => {
+  refresh().catch(() => {});
   const data = await loadOSM();
   if (data) { buildRoads(data); status(''); }
   else { buildRoads(fallbackGrid()); status("⚠️ OpenStreetMap ma'lumoti yuklanmadi — namunaviy to'r ko'rsatilmoqda"); }

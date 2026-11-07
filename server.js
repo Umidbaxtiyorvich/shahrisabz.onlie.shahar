@@ -100,6 +100,40 @@ async function refreshIgToken() {
 }
 setInterval(() => refreshIgToken().catch(() => {}), 24 * 3600 * 1000);
 
+// ---- Xarita ma'lumoti: server bir marta OpenStreetMap'dan yuklab, data/osm.json da saqlaydi ----
+const OSM_FILE = path.join(__dirname, 'data', 'osm.json');
+const OSM_BBOX = '39.015,66.775,39.105,66.885';
+let osmLoading = null;
+async function getOsm() {
+  if (fs.existsSync(OSM_FILE)) return fs.readFileSync(OSM_FILE);
+  const bundled = path.join(PUB, 'osm.json'); if (fs.existsSync(bundled)) return fs.readFileSync(bundled);
+  if (osmLoading) return osmLoading;
+  osmLoading = (async () => {
+    const q = `[out:json][timeout:120];(way["highway"~"^(trunk|primary|secondary|tertiary|residential|unclassified|living_street|service)$"](${OSM_BBOX});node["place"~"^(neighbourhood|suburb|quarter|village|hamlet)$"](${OSM_BBOX}););out geom;`;
+    const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+    for (const u of mirrors) {
+      try {
+        const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'shahrisabz-online-shahar' }, signal: AbortSignal.timeout(130000) });
+        if (!r.ok) { console.log('OSM', u, r.status); continue; }
+        const j = await r.json();
+        const out = { ways: [], places: [] };
+        for (const e of j.elements) {
+          if (e.type === 'way' && e.geometry) out.ways.push({ t: e.tags.highway, n: e.tags['name:uz'] || e.tags.name || '', g: e.geometry.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]) });
+          else if (e.type === 'node' && e.tags?.name) out.places.push({ n: e.tags['name:uz'] || e.tags.name, lat: e.lat, lon: e.lon });
+        }
+        if (!out.ways.length) continue;
+        const buf = Buffer.from(JSON.stringify(out));
+        fs.mkdirSync(path.dirname(OSM_FILE), { recursive: true }); fs.writeFileSync(OSM_FILE, buf);
+        console.log(`OSM saqlandi: ${out.ways.length} yo'l, ${out.places.length} mahalla`);
+        return buf;
+      } catch (e) { console.log('OSM xato', u, e.message); }
+    }
+    return null;
+  })().finally(() => { osmLoading = null; });
+  return osmLoading;
+}
+getOsm().catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
@@ -273,6 +307,11 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname === '/osm.json') {
+      const buf = await getOsm();
+      if (!buf) return send(res, 503, { error: 'Xarita hozircha yuklanmadi' });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' }); return res.end(buf);
+    }
     let f = path.normalize(path.join(PUB, url.pathname === '/' ? 'index.html' : url.pathname === '/admin' ? 'admin.html' : url.pathname));
     if (!f.startsWith(PUB) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end('404'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
