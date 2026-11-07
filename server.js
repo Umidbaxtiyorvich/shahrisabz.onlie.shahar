@@ -5,7 +5,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_LOGIN = process.env.ADMIN_LOGIN || 'umid0229';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'umid0229';
 const FOLLOW_SECRET = process.env.FOLLOW_SECRET || 'follow-secret';
 const DB_FILE = path.join(__dirname, 'data', 'db.json');
 const PUB = path.join(__dirname, 'public');
@@ -15,6 +16,8 @@ function loadDb() {
   catch { return { residents: [], plots: [], notifications: [], settings: { pricePerM2: 50000, currency: "so'm" }, edgeCounter: 0 }; }
 }
 let db = loadDb();
+db.messages ||= [];
+db.settings.instagram ||= { token: '', igUserId: '', verifyToken: '', username: '', lastSync: 0 };
 function save() { fs.mkdirSync(path.dirname(DB_FILE), { recursive: true }); fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
 const adminTokens = new Set();
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -59,12 +62,35 @@ function overlaps(a) {
   return db.plots.some((p) => p.status !== 'rejected' && a.x1 < p.x2 && a.x2 > p.x1 && a.z1 < p.z2 && a.z2 > p.z1);
 }
 
+
+// ---- Instagram Graph API (admin paneldan ulanadi) ----
+async function igGet(pathq) {
+  const ig = db.settings.instagram;
+  if (!ig.token || !ig.igUserId) throw new Error('Avval Instagram token va akkaunt ID ni kiriting');
+  const r = await fetch(`https://graph.facebook.com/v21.0/${pathq}${pathq.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(ig.token)}`);
+  const j = await r.json();
+  if (j.error) throw new Error('Instagram: ' + j.error.message);
+  return j;
+}
+// Instagram API obunachilar ro'yxatini bermaydi, shuning uchun postlarga komment yozganlarga uy quriladi
+async function igSync() {
+  const media = await igGet(`${db.settings.instagram.igUserId}/media?fields=id&limit=25`);
+  const added = [];
+  for (const md of media.data || []) {
+    const c = await igGet(`${md.id}/comments?fields=username&limit=100`);
+    for (const x of c.data || []) { const before = db.residents.length; const r = addFollower(x.username, 'instagram'); if (r && db.residents.length > before) added.push(r.username); }
+  }
+  db.settings.instagram.lastSync = Date.now(); save();
+  return { ok: true, added };
+}
+setInterval(() => { if (db.settings.instagram.token) igSync().catch((e) => console.log(e.message)); }, 10 * 60 * 1000);
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), settings: db.settings, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), settings: { pricePerM2: db.settings.pricePerM2, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -76,7 +102,7 @@ async function api(req, res, url) {
   // Meta webhook tekshiruvi (GET hub.challenge)
   if (p === '/api/instagram/webhook') {
     if (m === 'GET') {
-      if (url.searchParams.get('hub.verify_token') === FOLLOW_SECRET) { res.writeHead(200); return res.end(url.searchParams.get('hub.challenge') || ''); }
+      const vt = url.searchParams.get('hub.verify_token'); if (vt && (vt === FOLLOW_SECRET || vt === db.settings.instagram.verifyToken)) { res.writeHead(200); return res.end(url.searchParams.get('hub.challenge') || ''); }
       return send(res, 403, { error: 'verify failed' });
     }
     const b = await body(req);
@@ -125,17 +151,48 @@ async function api(req, res, url) {
     save();
     return send(res, 200, { ok: true, plot: pubPlot(plot) });
   }
+
+  // ---- CHAT (uy egalari o'rtasida, hamma xabarlar saqlanadi) ----
+  if (m === 'POST' && p.startsWith('/api/chat/')) {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const me = r.username;
+    if (p === '/api/chat/send') {
+      const to = cleanName(b.to), text = String(b.text || '').trim().slice(0, 2000);
+      if (!db.residents.some((x) => x.username === to)) return send(res, 404, { error: 'Bunday uy egasi yo\'q' });
+      if (!text || to === me) return send(res, 400, { error: 'Xabar bo\'sh' });
+      const msg = { id: id(), from: me, to, text, at: Date.now(), read: false };
+      db.messages.push(msg); save();
+      return send(res, 200, { ok: true, message: msg });
+    }
+    if (p === '/api/chat/history') {
+      const w = cleanName(b.with);
+      const list = db.messages.filter((x) => (x.from === me && x.to === w) || (x.from === w && x.to === me));
+      let ch = false; list.forEach((x) => { if (x.to === me && !x.read) { x.read = true; ch = true; } }); if (ch) save();
+      return send(res, 200, { messages: list });
+    }
+    if (p === '/api/chat/inbox') {
+      const conv = {};
+      for (const x of db.messages) {
+        if (x.from !== me && x.to !== me) continue;
+        const o = x.from === me ? x.to : x.from;
+        const c = conv[o] ||= { with: o, last: '', at: 0, unread: 0 };
+        c.last = x.text; c.at = x.at; if (x.to === me && !x.read) c.unread++;
+      }
+      return send(res, 200, { conversations: Object.values(conv).sort((a, b) => b.at - a.at) });
+    }
+  }
   // ---- ADMIN ----
   if (m === 'POST' && p === '/api/admin/login') {
     const b = await body(req);
-    if (b.password !== ADMIN_PASSWORD) return send(res, 403, { error: "Parol noto'g'ri" });
+    if (b.login !== ADMIN_LOGIN || b.password !== ADMIN_PASSWORD) return send(res, 403, { error: "Login yoki parol noto'g'ri" });
     const t = crypto.randomBytes(16).toString('hex'); adminTokens.add(t);
     return send(res, 200, { token: t });
   }
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: db.settings, followSecret: FOLLOW_SECRET });
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map(pub), plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token } }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -147,6 +204,22 @@ async function api(req, res, url) {
       db.notifications.forEach((n) => { if (n.plotId === pl.id) n.read = true; });
       save(); return send(res, 200, { ok: true });
     }
+
+    if (p === '/api/admin/instagram') {
+      const ig = db.settings.instagram;
+      if (b.token !== undefined) ig.token = String(b.token).trim();
+      if (b.igUserId !== undefined) ig.igUserId = String(b.igUserId).trim();
+      if (b.verifyToken !== undefined) ig.verifyToken = String(b.verifyToken).trim();
+      save(); return send(res, 200, { ok: true });
+    }
+    if (p === '/api/admin/instagram/test') {
+      try { const a = await igGet(`${db.settings.instagram.igUserId}?fields=username,followers_count,media_count,profile_picture_url`); db.settings.instagram.username = a.username; save(); return send(res, 200, a); }
+      catch (e) { return send(res, 400, { error: e.message }); }
+    }
+    if (p === '/api/admin/instagram/sync') {
+      try { return send(res, 200, await igSync()); } catch (e) { return send(res, 400, { error: e.message }); }
+    }
+    if (p === '/api/admin/chats') return send(res, 200, { messages: db.messages.slice(-500) });
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { delete r.pass; save(); } return send(res, 200, { ok: true }); }
     if (p === '/api/admin/settings') { const v = Number(b.pricePerM2); if (v > 0) db.settings.pricePerM2 = v; if (b.currency) db.settings.currency = String(b.currency).slice(0, 10); save(); return send(res, 200, { ok: true }); }

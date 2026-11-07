@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shahrisabz Admin</title><link rel="stylesheet" href="style.css">
-<style>html,body{overflow:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}</style></head>
+<style>html,body{overflow:auto;height:auto;background:#eef3fa}.wrap{max-width:1000px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}.n{padding:8px;border-radius:10px;background:#fff7d6;margin:4px 0}.n.read{background:#f3f5f8;color:#667}.badge{background:#e24b4b;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}.scroll{overflow-x:auto}</style></head>
 <body><div class="wrap">
-<div class="card" id="loginBox"><h2>🔐 Admin panel</h2><div class="row"><input id="pw" type="password" placeholder="Admin parol"><button id="go">Kirish</button></div></div>
+<div class="card" id="loginBox"><h2>🔐 Admin panel</h2><div class="row"><input id="lg" placeholder="Login"><input id="pw" type="password" placeholder="Parol"><button id="go">Kirish</button></div></div>
 <div id="panel" class="hidden" style="display:flex;flex-direction:column;gap:14px">
   <div class="card"><h3>🔔 Xabarlar <span class="badge" id="unread">0</span> <button class="ghost" id="markRead">Hammasini o'qildi</button></h3><div id="notes"></div></div>
   <div class="card"><h3>📐 Joy sotib olish so'rovlari</h3><div class="scroll"><table id="plots"></table></div></div>
@@ -11,6 +11,12 @@
     <div class="muted">Usernamelarni vergul yoki yangi qator bilan kiriting — har biriga shahar chekkasida avtomatik uy quriladi.</div>
     <textarea id="users" rows="3" style="width:100%;border-radius:10px;border:1px solid #cfd8e6;padding:8px"></textarea><button id="addUsers">Qo'shish</button>
     <div class="muted" id="hook"></div></div>
+  <div class="card"><h3>📸 Instagram akkauntni ulash <span id="igst" class="muted"></span></h3>
+    <div class="muted">Meta Developers'da Instagram Business akkaunt uchun <b>Access Token</b> va <b>Instagram akkaunt ID</b> oling va shu yerga kiriting.</div>
+    <input id="igid" placeholder="Instagram akkaunt ID (masalan 1784...)"><input id="igtok" type="password" placeholder="Access token (o'zgartirmasangiz bo'sh qoldiring)"><input id="igvt" placeholder="Webhook verify token">
+    <div class="row"><button id="igsave">Saqlash</button><button class="ghost" id="igtest">Ulanishni tekshirish</button><button class="ok" id="igsync">Hozir sinxronlash</button></div>
+    <div class="muted" id="iginfo"></div></div>
+  <div class="card"><h3>💬 Aholi yozishmalari (<span id="mc">0</span>)</h3><div class="scroll" style="max-height:300px;overflow:auto"><table id="chats"></table></div></div>
   <div class="card"><h3>⚙️ Narx</h3><div class="row"><input id="price" type="number" style="max-width:200px"> <input id="cur" style="max-width:100px"><button id="saveS">Saqlash</button></div><div class="muted">1 m² narxi. Joy narxi = maydon × narx.</div></div>
   <div class="card"><h3>🏠 Aholi (<span id="rc">0</span>)</h3><div class="scroll"><table id="res"></table></div></div>
 </div></div>
@@ -18,7 +24,7 @@
 const $=id=>document.getElementById(id);let T=sessionStorage.getItem('adm')||'';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function call(u,d){const r=await fetch(u,{method:d?'POST':'GET',headers:{'Content-Type':'application/json','x-admin-token':T},body:d?JSON.stringify(d):undefined});const j=await r.json();if(r.status===401){T='';sessionStorage.removeItem('adm');show();}if(!r.ok)throw new Error(j.error);return j}
-$('go').onclick=async()=>{try{const j=await call('/api/admin/login',{password:$('pw').value});T=j.token;sessionStorage.setItem('adm',T);show()}catch(e){alert(e.message)}};
+$('go').onclick=async()=>{try{const j=await call('/api/admin/login',{login:$('lg').value,password:$('pw').value});T=j.token;sessionStorage.setItem('adm',T);show()}catch(e){alert(e.message)}};
 function show(){$('loginBox').classList.toggle('hidden',!!T);$('panel').classList.toggle('hidden',!T);if(T)load()}
 const ST={pending:'⏳ kutilmoqda',sold:'✅ sotildi',rejected:'❌ rad etildi'};
 async function load(){const d=await call('/api/admin/data');const cur=d.settings.currency;
@@ -28,7 +34,16 @@ async function load(){const d=await call('/api/admin/data');const cur=d.settings
  $('rc').textContent=d.residents.length;
  $('res').innerHTML='<tr><th>Username</th><th>Manzil</th><th>Kirgan</th><th></th></tr>'+d.residents.map(r=>`<tr><td><a href="${esc(r.link)}" target="_blank">@${esc(r.username)}</a></td><td>${esc(r.mahalla)} ${esc(r.street)}</td><td>${r.claimed?'ha':'yo\'q'}</td><td><button class="ghost" onclick="act('reset','${r.id}')">Parolni tiklash</button> <button class="no" onclick="if(confirm('O\\'chirilsinmi?'))act('delete','${r.id}')">O'chirish</button></td></tr>`).join('');
  $('price').value=d.settings.pricePerM2;$('cur').value=cur;
- $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;}
+ $('hook').innerHTML=`Avtomatik ulash: Instagram obuna avtomatizatsiyasi (ManyChat / Make / Zapier) <code>POST ${location.origin}/api/follow</code> ga <code>{"username":"...","secret":"${esc(d.followSecret)}"}</code> yuborsin.`;
+ const ig=d.settings.instagram;$('igid').value=ig.igUserId||'';$('igvt').value=ig.verifyToken||'';
+ $('igst').textContent=ig.hasToken?('✅ ulangan'+(ig.username?' — @'+ig.username:'')):'❌ ulanmagan';
+ $('iginfo').innerHTML=`Webhook URL: <code>${location.origin}/api/instagram/webhook</code>${ig.lastSync?' · Oxirgi sinxron: '+new Date(ig.lastSync).toLocaleString():''}`;
+ $('mc').textContent=d.messageCount;const ch=await call('/api/admin/chats');
+ $('chats').innerHTML='<tr><th>Kimdan</th><th>Kimga</th><th>Xabar</th><th>Vaqt</th></tr>'+ch.messages.slice().reverse().map(m=>`<tr><td>@${esc(m.from)}</td><td>@${esc(m.to)}</td><td>${esc(m.text)}</td><td>${new Date(m.at).toLocaleString()}</td></tr>`).join('');}
+$('igsave').onclick=async()=>{const d={igUserId:$('igid').value,verifyToken:$('igvt').value};if($('igtok').value)d.token=$('igtok').value;await call('/api/admin/instagram',d);$('igtok').value='';alert('Saqlandi');load()};
+$('igtest').onclick=async()=>{try{const a=await call('/api/admin/instagram/test',{});alert(`✅ @${a.username} — ${a.followers_count} obunachi, ${a.media_count} post`);load()}catch(e){alert(e.message)}};
+$('igsync').onclick=async()=>{try{const a=await call('/api/admin/instagram/sync',{});alert(a.added.length+' ta yangi uy qurildi');load()}catch(e){alert(e.message)}};
+
 async function setP(id,status){await call('/api/admin/plot',{id,status});load()}
 async function act(a,id){await call('/api/admin/resident/'+a,{id});load()}
 $('addUsers').onclick=async()=>{const j=await call('/api/admin/followers',{usernames:$('users').value});alert(j.added.length+' ta uy qurildi');$('users').value='';load()};

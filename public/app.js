@@ -161,8 +161,8 @@ function house(r) {
   const l = label('@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = 22; g.add(l);
   g.position.set(r.x, 0, r.z);
   g.userData = { kind: 'house', r };
-  body.userData = roof.userData = g.userData;
-  clickable.push(body, roof);
+  body.userData = roof.userData = l.userData = g.userData;
+  clickable.push(body, roof, l);
   return g;
 }
 const TYPE_STYLE = { uy: [0xf2ead3, 10], "do'kon": [0xffd36e, 8], kafe: [0xff9f80, 7], ofis: [0x9cc3ff, 30], mehmonxona: [0xc6a7ff, 40], maktab: [0xffe08a, 14], masjid: [0x7fd6c2, 16], "bog'": [0x6fd17c, 1], zavod: [0xb8bec9, 18], boshqa: [0xe7e1cf, 10] };
@@ -207,6 +207,7 @@ async function refresh() {
   state.plots.forEach((p) => objects.add(plotObj(p)));
   $('count').textContent = `${state.residents.length} ta uy`;
   renderMe();
+  checkUnread();
 }
 const myRes = () => me && state.residents.find((r) => r.username === me.username);
 function renderMe() {
@@ -292,7 +293,8 @@ async function onClick(e) {
   const hit = ray.intersectObjects(clickable)[0];
   if (hit?.object.userData.kind === 'house') {
     const r = hit.object.userData.r;
-    modal(`<h3>🏠 @${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div><div class="row"><a href="${esc(r.link)}" target="_blank" rel="noopener"><button>Instagram sahifasi</button></a><button class="ghost" id="nope">Yopish</button></div>`);
+    if (myRes() && r.username !== me.username) return openChat(r.username);
+    modal(`<h3>🏠 @${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div>${myRes() ? '' : '<div class="hint">Uy egasi bilan yozishish uchun pastdan kiring.</div>'}<div class="row"><a href="${esc(r.link)}" target="_blank" rel="noopener"><button>Instagram sahifasi</button></a><button class="ghost" id="nope">Yopish</button></div>`);
     $('nope').onclick = closeModal;
   } else if (hit?.object.userData.kind === 'plot') {
     const pl = hit.object.userData.p;
@@ -312,6 +314,46 @@ $('move').onclick = () => { setMode('move'); flyTo(controls.target.x, controls.t
 $('buy').onclick = () => setMode('buy');
 const doSearch = () => { const u = $('q').value.trim().replace(/^@/, '').toLowerCase(); const r = state.residents.find((x) => x.username === u) || state.residents.find((x) => x.username.includes(u)); if (r && u) flyTo(r.x, r.z); else alert('Topilmadi'); };
 $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key === 'Enter' && doSearch());
+
+
+// ---- CHAT ----
+let chatWith = null, chatTimer = null;
+const fmtT = (t) => new Date(t).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+async function loadChat(scroll) {
+  if (!chatWith || !$('msgs')) return;
+  const { messages } = await api('/api/chat/history', { ...me, with: chatWith });
+  const box = $('msgs'), atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.innerHTML = messages.map((m) => `<div class="msg ${m.from === me.username ? 'mine' : ''}">${esc(m.text)}<small>${fmtT(m.at)}</small></div>`).join('') || '<div class="muted">Hali xabar yo\'q — birinchi bo\'lib yozing!</div>';
+  if (scroll || atBottom) box.scrollTop = box.scrollHeight;
+}
+function openChat(u) {
+  chatWith = u;
+  const r = state.residents.find((x) => x.username === u);
+  modal(`<h3>💬 @${esc(u)}</h3><div class="muted">${esc([r?.mahalla, r?.street].filter(Boolean).join(', '))} · <a href="https://instagram.com/${esc(u)}" target="_blank" rel="noopener">Instagram</a></div>
+    <div class="msgs" id="msgs"></div>
+    <div class="row" style="flex-wrap:nowrap"><input id="mtext" placeholder="Xabar yozing…" maxlength="2000"><button id="msend">Yuborish</button></div>
+    <div class="row"><button class="ghost" id="mback">← Xabarlar</button><button class="ghost" id="nope">Yopish</button></div>`);
+  const sendIt = async () => { const t = $('mtext').value.trim(); if (!t) return; $('mtext').value = ''; try { await api('/api/chat/send', { ...me, to: u, text: t }); await loadChat(true); } catch (e) { alert(e.message); } };
+  $('msend').onclick = sendIt; $('mtext').addEventListener('keydown', (e) => e.key === 'Enter' && sendIt());
+  $('nope').onclick = closeModal; $('mback').onclick = openInbox;
+  loadChat(true); clearInterval(chatTimer); chatTimer = setInterval(() => { if ($('modal').classList.contains('hidden')) { clearInterval(chatTimer); chatWith = null; } else loadChat(); }, 3000);
+  $('mtext').focus();
+}
+async function openInbox() {
+  chatWith = null; clearInterval(chatTimer);
+  const { conversations } = await api('/api/chat/inbox', me);
+  modal(`<h3>💬 Xabarlar</h3><div class="hint">Yozishish uchun xaritadagi istalgan uy ustidagi @nikni bosing.</div>
+    ${conversations.map((c) => `<div class="conv" data-u="${esc(c.with)}"><b>@${esc(c.with)}</b> ${c.unread ? `<span class="count">${c.unread}</span>` : ''}<div class="muted">${esc(c.last.slice(0, 60))} · ${fmtT(c.at)}</div></div>`).join('') || '<div class="muted">Hali yozishmalar yo\'q</div>'}
+    <button class="ghost" id="nope">Yopish</button>`);
+  $('nope').onclick = closeModal;
+  document.querySelectorAll('.conv').forEach((el) => (el.onclick = () => openChat(el.dataset.u)));
+}
+async function checkUnread() {
+  if (!myRes()) return;
+  try { const { conversations } = await api('/api/chat/inbox', me); const n = conversations.reduce((a, c) => a + c.unread, 0); $('unr').textContent = n; $('unr').classList.toggle('hidden', !n); } catch {}
+}
+setInterval(checkUnread, 10000);
+$('inbox').onclick = openInbox;
 
 // ---- Animatsiya ----
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });

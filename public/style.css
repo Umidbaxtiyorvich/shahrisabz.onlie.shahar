@@ -16,3 +16,7 @@ button.ghost{background:#e9eef6;color:#334}button.ok{background:#1fa463}button.n
 .box{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px}.box h3{margin:0}
 .tip{position:fixed;pointer-events:none;background:#1d2433;color:#fff;padding:4px 8px;border-radius:8px;font-size:12px;transform:translate(-50%,-130%)}
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #e3e8f0;padding:6px;text-align:left;vertical-align:top}
+
+.msgs{height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;background:#f3f6fb;border-radius:12px;padding:8px}
+.msg{max-width:80%;padding:6px 10px;border-radius:12px;background:#fff;font-size:14px;word-wrap:break-word}.msg.mine{align-self:flex-end;background:#2f7cf6;color:#fff}
+.msg small{display:block;opacity:.6;font-size:11px}.conv{padding:8px;border-radius:10px;background:#f3f6fb;cursor:pointer}.conv:hover{background:#e6eefc}
