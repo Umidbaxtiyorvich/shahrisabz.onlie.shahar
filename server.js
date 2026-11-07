@@ -192,7 +192,15 @@ async function watchFollowers() {
   w.initialized = true; w.lastCheck = Date.now(); w.lastError = ''; save();
   return { ok: true, added };
 }
-setInterval(() => { if (db.settings.watcher.sessionid) watchFollowers().then((r) => { if (r.added.length) dmWorker().catch(() => {}); }).catch((e) => { db.settings.watcher.lastError = e.message; save(); console.log('Watcher:', e.message); }); }, 60 * 1000); // har daqiqada
+let watchPauseUntil = 0, watchBusy = false;
+setInterval(() => {
+  const w = db.settings.watcher;
+  if (!w.sessionid || watchBusy || Date.now() < watchPauseUntil) return;
+  watchBusy = true;
+  watchFollowers().then((r) => { if (r.added.length) dmWorker().catch(() => {}); })
+    .catch((e) => { w.lastError = e.message; save(); console.log('Watcher:', e.message); if (/429|cheklang|wait|rad/i.test(e.message)) watchPauseUntil = Date.now() + 10 * 60 * 1000; })
+    .finally(() => { watchBusy = false; });
+}, 20 * 1000); // har 20 soniyada; Instagram cheklasa 10 daqiqa dam oladi
 
 // ---- Yangi obunachiga Direct: "uyingiz tayyor" + sayt, login, parol (akkaunt seansi orqali, navbat bilan sekin) ----
 async function sendWebDm(pk, text) {
@@ -212,7 +220,7 @@ async function dmWorker() {
   catch (e) { w.dmError = e.message; r.dmTries = (r.dmTries || 0) + 1; if (r.dmTries >= 3) db.dmQueue.shift(); }
   save();
 }
-setInterval(() => dmWorker().catch(() => {}), 20 * 1000); // 20 soniyada 1 ta xabar
+setInterval(() => dmWorker().catch(() => {}), 10 * 1000); // 10 soniyada 1 ta xabar
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
