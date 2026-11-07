@@ -53,7 +53,6 @@ function addFollower(username, source, pk) {
   r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
   if (pk) r.pk = String(pk);
   db.residents.push(r);
-  if (r.pk) (db.dmQueue ||= []).push(r.id); // Direct'ga "uyingiz tayyor" xabari navbatga
   save();
   return r;
 }
@@ -151,14 +150,14 @@ async function igPost(pathq, payload) {
   const j = await r.json(); if (j.error) throw new Error('Instagram: ' + j.error.message); return j;
 }
 // Direct'ga xabar yozgan odamga: uy quriladi (bo'lmasa) va parol avtomatik javob bo'lib boradi (rasmiy API, 24 soat oynasi)
-const KEYWORD = /\buy\b|уй|uy\s*kerak|^uy/i;
+const KEYWORD = /(^|[^a-zа-я'ʻ`])(uy|уй)([^a-zа-я'ʻ`]|$)/i;
 const igMsg = (recipient, text) => igPost(`${db.settings.instagram.igUserId}/messages`, { recipient, message: { text } });
-// Direct'ga istalgan xabar yozgan odam (birinchi marta): obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
+// Direct'ga «uy» deb yozgan odam: obunani tekshiradi → uy quradi → sayt linki, nik, parol yuboradi
 async function handleDm(senderId, text) {
   const info = await igGet(`${senderId}?fields=username,is_user_follow_business`).catch(() => igGet(`${senderId}?fields=username`));
   if (!info.username) return;
   const existing = db.residents.find((x) => x.username === cleanName(info.username));
-  if (!KEYWORD.test(text || '') && existing?.delivered) return; // oddiy suhbat — qayta yubormaymiz
+  if (!KEYWORD.test(text || '')) return; // faqat «uy» deb yozganda link yuboriladi
   if (info.is_user_follow_business === false) {
     return igMsg({ id: senderId }, `Assalomu alaykum! 🏠 Uy olish uchun avval @${db.settings.instagram.username || 'sahifamiz'} ga obuna bo'ling, keyin yana «uy» deb yozing.`);
   }
@@ -444,7 +443,7 @@ async function api(req, res, url) {
       save();
       try { return send(res, 200, await watchFollowers()); } catch (e) { w.lastError = e.message; save(); return send(res, 400, { error: e.message }); }
     }
-    if (p === '/api/admin/passwords') return send(res, 200, { defaultPass: db.settings.defaultPass, queue: db.dmQueue.length, dmError: db.settings.watcher.dmError || '', list: db.residents.slice().sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r.id, username: r.username, password: r.mustChange ? db.settings.defaultPass + ' (umumiy)' : (r.plainPass || '—'), changed: !r.mustChange, delivered: !!r.delivered, loggedIn: !!r.lastLogin, text: passText(r), canDm: !!r.pk })) });
+    if (p === '/api/admin/passwords') return send(res, 200, { defaultPass: db.settings.defaultPass, queue: db.dmQueue.length, dmError: db.settings.watcher.dmError || '', list: db.residents.slice().sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r.id, username: r.username, source: r.source, createdAt: r.createdAt, password: r.mustChange ? db.settings.defaultPass + ' (umumiy)' : (r.plainPass || '—'), changed: !r.mustChange, delivered: !!r.delivered, loggedIn: !!r.lastLogin, text: passText(r), canDm: !!r.pk })) });
     if (p === '/api/admin/default-pass') { const v = String(b.password || ''); if (v.length < 4) return send(res, 400, { error: 'Kamida 4 belgi' }); const old = db.settings.defaultPass; db.settings.defaultPass = v; db.residents.forEach((r) => { if (r.mustChange || r.pass === hash(old)) { r.pass = hash(v); r.mustChange = true; } }); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resend') { const r = db.residents.find((x) => x.id === b.id); if (r && r.pk) { r.delivered = false; r.dmTries = 0; db.dmQueue.unshift(r.id); save(); } return send(res, 200, { ok: true, queued: !!(r && r.pk) }); }
     if (p === '/api/admin/delivered') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.delivered = true; save(); } return send(res, 200, { ok: true }); }
