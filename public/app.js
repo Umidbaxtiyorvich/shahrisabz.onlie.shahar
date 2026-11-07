@@ -64,7 +64,19 @@ let places = []; // {name,x,z}
 const streetLabels = [], placeLabels = [];
 let streetNames = [], officialPlaces = [];
 // Mahalla chegaralari: [x,z] ko'pburchaklar
-let mahallaPolys = [];
+let mahallaPolys = [], officialStreets = [];
+// Nomlarni solishtirish: x/h, o'/u, apostroflar farqini e'tiborsiz qoldiradi
+const nk = (s) => String(s || '').toLowerCase().replace(/[ʻʼ‘’`']/g, '').replace(/kochasi|ko'chasi|ko‘chasi|ulitsa|улица|street|tor ko.cha|berk ko.cha/g, '').replace(/h/g, 'x').replace(/o/g, 'u').replace(/[^a-zа-я0-9]/g, '');
+function drawCustomPlaces() {
+  for (const c of state.customPlaces || []) {
+    const [x, z] = toXZ(c.lat, c.lon);
+    const l = c.kind === 'mahalla' ? label('📍 ' + c.n, { size: 32, bg: 'rgba(31,164,99,.9)', fg: '#fff', scale: 2.8 }) : label(c.n, { size: 24, bg: 'rgba(255,255,255,.85)', fg: '#4a5568', scale: 1.1 });
+    l.position.set(x, c.kind === 'mahalla' ? 35 : 8, z); scene.add(l); (c.kind === 'mahalla' ? placeLabels : streetLabels).push(l);
+    if (c.kind === 'mahalla') places.push({ name: c.n, x, z }); else streetPoints.push({ name: c.n, x, z });
+    if (!streetNames.includes(c.n) && c.kind !== 'mahalla') streetNames.push(c.n);
+  }
+}
+let streetPoints = [];
 function drawMahallaBorders() {
   const pos = [];
   mahallaPolys = officialPlaces.map((o) => ({ n: o.n, rings: o.rings.map((r) => r.map(([lo, la]) => toXZ(la, lo))) }));
@@ -128,7 +140,12 @@ function buildRoads(data) {
   }
   for (let i = 0; i < geos.length; i += 4000) scene.add(new THREE.Mesh(mergeGeometries(geos.slice(i, i + 4000)), new THREE.MeshLambertMaterial({ color: 0xd3d7de })));
   for (let i = 0; i < lineGeo.length; i += 4000) scene.add(new THREE.Mesh(mergeGeometries(lineGeo.slice(i, i + 4000)), new THREE.MeshBasicMaterial({ color: 0xffffff })));
-  streetNames = [...named.keys()].sort();
+  streetNames = [...named.keys()];
+  for (const o of officialStreets) { // rasmiy ro'yxatdagi ko'cha OSM'da boshqacha yozilgan bo'lsa ham topiladi
+    const hit = streetNames.find((n) => nk(n) === nk(o.n)) || streetNames.find((n) => nk(n).includes(nk(o.n)) && nk(o.n).length > 3);
+    o.osm = hit || null; if (!hit) streetNames.push(o.n);
+  }
+  streetNames.sort();
   for (const [n, arr] of named) for (const q of arr) {
     const l = label(n, { size: 24, bg: 'rgba(255,255,255,.8)', fg: '#4a5568', scale: 1.1 });
     l.position.set(q.x, 8, q.z); l.visible = false; scene.add(l); streetLabels.push(l);
@@ -478,12 +495,19 @@ function openMove() {
   $('nope').onclick = closeModal;
   $('mmap').onclick = () => { closeModal(); setMode('move'); flyTo(controls.target.x, controls.target.z, 900); };
   $('maddr').onclick = async () => {
-    const st = $('mstr').value.trim().toLowerCase(), mh = $('mmah').value.trim().toLowerCase();
-    let cand = st ? segments.filter((s) => s.name && s.name.toLowerCase() === st) : [];
+    const st = $('mstr').value.trim().toLowerCase(); let mh = $('mmah').value.trim().toLowerCase();
+    const os = officialStreets.find((o) => nk(o.n) === nk(st));
+    const stName = os?.osm || st;
+    let cand = st ? segments.filter((s) => s.name && (s.name.toLowerCase() === stName.toLowerCase() || nk(s.name) === nk(stName))) : [];
+    const cp = st && streetPoints.find((q) => nk(q.name) === nk(st));
+    const cpMah = (state.customPlaces || []).find((c) => c.kind === 'kocha' && nk(c.n) === nk(st))?.mahalla || os?.mahalla || '';
+    if (!cand.length && cp) { const n = nearestRoad(cp.x, cp.z); if (n) cand = [{ ...n.s, name: cp.name }]; }
+    if (!cand.length && os?.mahalla && !mh) mh = os.mahalla.toLowerCase();
     if (st && !cand.length) cand = segments.filter((s) => s.name && s.name.toLowerCase().includes(st));
-    let mp = mh && places.find((p) => p.name.toLowerCase().includes(mh));
-    if (mh && !mp) { const o = officialPlaces.find((q) => q.n.toLowerCase().includes(mh)); if (o) mp = { name: o.n, x: toXZ(o.lat, o.lon)[0], z: toXZ(o.lat, o.lon)[1] }; }
+    let mp = mh && (places.find((p) => nk(p.name) === nk(mh)) || places.find((p) => p.name.toLowerCase().includes(mh)));
+    if (mh && !mp) { const o = officialPlaces.find((q) => nk(q.n) === nk(mh) || q.n.toLowerCase().includes(mh)); if (o) mp = { name: o.n, x: toXZ(o.lat, o.lon)[0], z: toXZ(o.lat, o.lon)[1] }; }
     if (!cand.length && mp) { const n = nearestRoad(mp.x, mp.z); if (n) cand = [n.s]; }
+    if (!cand.length && st && !mp) return alert(`«${$('mstr').value}» ko'chasining xaritadagi joyi hali kiritilmagan. Mahallasini ham tanlang yoki xaritadan tanlab ko'ching.`);
     if (!cand.length) return alert("Bunday ko'cha yoki mahalla topilmadi");
     if (mp) cand.sort((a, b) => Math.hypot((a.ax + a.bx) / 2 - mp.x, (a.az + a.bz) / 2 - mp.z) - Math.hypot((b.ax + b.bx) / 2 - mp.x, (b.az + b.bz) / 2 - mp.z));
     // band bo'lmagan joy: uylar orasida kamida 25 m
@@ -491,7 +515,7 @@ function openMove() {
       const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L = Math.hypot(dx, dz) || 1;
       const x = sg.ax + dx * t - dz / L * 16 * side, z = sg.az + dz * t + dx / L * 16 * side;
       if (state.residents.some((r) => r.username !== me.username && Math.hypot(r.x - x, r.z - z) < 25)) continue;
-      try { await api('/api/move', { ...me, x, z, street: sg.name || nearestStreetName(x, z), mahalla: nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(x, z); } catch (e) { alert(e.message); }
+      try { await api('/api/move', { ...me, x, z, street: sg.name || nearestStreetName(x, z), mahalla: (mh && mp ? mp.name : '') || cpMah || mahallaAt(x, z) || nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(x, z); } catch (e) { alert(e.message); }
       return;
     }
     alert("Bu ko'chada bo'sh joy qolmagan — xaritadan tanlang");
@@ -579,6 +603,7 @@ let frame = 0;
 (async () => {
   refresh().catch(() => {});
   try { officialPlaces = (await (await fetch('mahallas-geo.json')).json()).mahallalar; } catch {}
+  try { officialStreets = (await (await fetch('kochalar.json')).json()).kochalar; } catch {}
   const data = await loadOSM();
   if (data) { buildRoads(data); status(''); }
   else {
@@ -586,5 +611,6 @@ let frame = 0;
     const t = setInterval(async () => { try { const r = await fetch('osm.json', { method: 'HEAD' }); if (r.ok) { clearInterval(t); location.reload(); } } catch {} }, 30000);
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
+  drawCustomPlaces();
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
 })();

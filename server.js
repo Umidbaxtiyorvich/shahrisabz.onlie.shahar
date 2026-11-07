@@ -18,6 +18,7 @@ function loadDb() {
 let db = loadDb();
 db.messages ||= [];
 db.tx ||= [];
+db.customPlaces ||= []; // admin qo'lda joylashtirgan mahalla/ko'chalar
 db.settings.pricePerSotix ||= (db.settings.pricePerM2 || 50000) * 100; // 1 sotix = 100 m²
 db.settings.shop ||= {
   houses: { oddiy: 0, zamonaviy: 5000000, kottej: 12000000, villa: 25000000, minora: 50000000 },
@@ -283,7 +284,7 @@ const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid',
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -546,6 +547,19 @@ async function api(req, res, url) {
       for (const k of ['houses', 'cars']) if (b[k]) for (const [n, v] of Object.entries(b[k])) { const nn = String(n).trim().toLowerCase().slice(0, 20); if (!nn) continue; if (v === null) delete sh[k][nn]; else if (Number(v) >= 0) sh[k][nn] = Math.round(Number(v)); }
       if (Number(b.repaint) >= 0) sh.repaint = Math.round(Number(b.repaint));
       save(); return send(res, 200, { ok: true, shop: sh });
+    }
+    if (p === '/api/admin/place') { // {n, kind: 'mahalla'|'kocha', coords: "39.05, 66.82"} — o'chirish: {n, kind, remove:true}
+      const n = String(b.n || '').trim().slice(0, 60), kind = b.kind === 'mahalla' ? 'mahalla' : 'kocha';
+      if (!n) return send(res, 400, { error: 'Nom kerak' });
+      db.customPlaces = db.customPlaces.filter((x) => !(x.n === n && x.kind === kind));
+      if (!b.remove) {
+        const m = String(b.coords || '').match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+        if (!m) return send(res, 400, { error: "Koordinatani shunday kiriting: 39.05123, 66.82456" });
+        let lat = +m[1], lon = +m[2]; if (lat > 60) [lat, lon] = [lon, lat];
+        if (lat < 38.8 || lat > 39.3 || lon < 66.5 || lon > 67.2) return send(res, 400, { error: 'Bu koordinata Shahrisabzdan tashqarida' });
+        db.customPlaces.push({ n, kind, lat, lon, mahalla: String(b.mahalla || '').slice(0, 60) });
+      }
+      save(); return send(res, 200, { ok: true });
     }
     if (p === '/api/admin/tx') return send(res, 200, { tx: db.tx.slice(-300).reverse() });
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
