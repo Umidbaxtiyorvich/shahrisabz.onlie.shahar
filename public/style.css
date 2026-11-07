@@ -1,0 +1,18 @@
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#bfe3ff;color:#1d2433}
+#app{position:fixed;inset:0}
+.card{background:rgba(255,255,255,.88);backdrop-filter:blur(8px);border-radius:16px;box-shadow:0 6px 24px rgba(0,40,90,.15);padding:10px 14px}
+.top{position:fixed;top:12px;left:12px;right:12px;display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}.top>*{pointer-events:auto}
+.title b{font-size:20px}.title span{color:#2f7cf6;font-weight:600}.count{display:inline-block;margin-left:8px;background:#e8f0ff;color:#2f7cf6;border-radius:10px;padding:2px 8px;font-size:13px;font-weight:600}
+.search{display:flex;gap:6px;flex:1;min-width:220px;max-width:420px}
+input,select{border:1px solid #cfd8e6;border-radius:10px;padding:8px 10px;font-size:14px;width:100%;background:#fff}
+button{border:0;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;background:#2f7cf6;color:#fff;cursor:pointer;white-space:nowrap}
+button.ghost{background:#e9eef6;color:#334}button.ok{background:#1fa463}button.no{background:#e24b4b}
+.status{position:fixed;top:74px;left:12px;font-size:13px;max-width:calc(100% - 24px)}
+.bottom{position:fixed;bottom:12px;left:12px;right:12px;display:flex;justify-content:center}
+.bottom .card{width:100%;max-width:560px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:6px;flex-wrap:wrap}.hint,.muted{font-size:13px;color:#5b6577}
+.hidden{display:none!important}
+.modal{position:fixed;inset:0;background:rgba(0,20,50,.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.box{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px}.box h3{margin:0}
+.tip{position:fixed;pointer-events:none;background:#1d2433;color:#fff;padding:4px 8px;border-radius:8px;font-size:12px;transform:translate(-50%,-130%)}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #e3e8f0;padding:6px;text-align:left;vertical-align:top}

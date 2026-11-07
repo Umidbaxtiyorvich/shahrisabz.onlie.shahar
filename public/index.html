@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Shahrisabz Online Shahar</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
+</head>
+<body>
+<div id="app"></div>
+<div class="top">
+  <div class="card title"><b>Shahrisabz</b> <span>online shahar</span><div class="count" id="count">0 ta uy</div></div>
+  <div class="card search"><input id="q" placeholder="🔍 O'z nikingni qidir (@username)"><button id="qbtn">Top</button></div>
+</div>
+<div class="card status" id="status">Xarita yuklanmoqda…</div>
+<div class="bottom">
+  <div id="guest" class="card">
+    <div class="hint">Instagram sahifamizga obuna bo'lgan bo'lsangiz — uyingiz shahar chekkasida tayyor!</div>
+    <input id="lu" placeholder="Instagram username"><input id="lp" type="password" placeholder="Parol (birinchi marta — yangi parol)">
+    <button id="login">Kirish</button>
+  </div>
+  <div id="me" class="card hidden">
+    <div>Salom, <b id="mename"></b>! <span id="meaddr" class="muted"></span></div>
+    <div class="row">
+      <button id="gohome">🏠 Uyim</button>
+      <button id="move">🚚 Ko'chib o'tish</button>
+      <button id="buy">📐 Joy sotib olish</button>
+      <button id="logout" class="ghost">Chiqish</button>
+    </div>
+  </div>
+</div>
+<div id="modal" class="modal hidden"><div class="card box" id="mbox"></div></div>
+<div id="tip" class="tip hidden"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{ "name": "shahrisabz-online-shahar", "version": "1.0.0", "private": true, "scripts": { "start": "node server.js", "osm": "node tools/fetch-osm.js" }, "engines": { "node": ">=18" } }
