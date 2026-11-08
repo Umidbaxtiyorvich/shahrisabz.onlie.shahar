@@ -392,6 +392,7 @@ function house(r, opts = {}) {
   const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 19.5; g.add(av);
+  if (!opts.data) { const bl = label('💰 ' + money(r.balance || 0), { size: 26, bg: 'rgba(255,214,90,.95)', fg: '#3b2f00', scale: .75 }); bl.position.y = top + 27; bl.renderOrder = 12; g.add(bl); } // hamyondagi summa — rasm tepasida
   const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 11.5; g.add(l);
   const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
   if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; g.add(al); }

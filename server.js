@@ -70,14 +70,14 @@ function addFollower(username, source, pk) {
   if (r) return r;
   const s = autoLot() || edgeSpot();
   const pw = db.settings.defaultPass;
-  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, rot: s.rot || 0, lot: !!s.street || s.rot !== undefined, mahalla: 'Shahar chekkasi', street: s.street || '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
+  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, rot: s.rot || 0, lot: !!ROADS && s.rot !== undefined, mahalla: 'Shahar chekkasi', street: s.street || '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
   if (pk) r.pk = String(pk);
   db.residents.push(r);
   save();
   return r;
 }
 
-const pub = (r) => ({ rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pub = (r) => ({ balance: r.balance || 0, rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
 const pubPlot = (p) => ({ built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
@@ -163,7 +163,7 @@ async function getOsm() {
   return osmLoading;
 }
 getOsm().then((b) => b && buildRoads(b)).catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
-setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().catch(() => {}); }, 10 * 60 * 1000);
+setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().then((b) => b && buildRoads(b)).catch(() => {}); else if (!ROADS) buildRoads(fs.readFileSync(OSM_FILE)); }, 2 * 60 * 1000);
 
 async function igPost(pathq, payload) {
   const ig = db.settings.instagram;
@@ -503,6 +503,7 @@ async function api(req, res, url) {
     if (!r) return send(res, 403, { error: 'Avval kiring' });
     if (r.homeless) return send(res, 400, { error: "Uyingizni sotgansiz — ko'chish uchun avval joy sotib olib, uy quring" });
     if (!isFinite(b.x) || !isFinite(b.z)) return send(res, 400, { error: 'Joy tanlang' });
+    if (!ROADS) return send(res, 503, { error: "Shahrisabz xaritasi serverda hali tayyorlanmoqda — 1–2 daqiqadan keyin qayta urinib ko'ring" });
     if (!spotFree(+b.x, +b.z, r.username)) return send(res, 409, { error: roadClear(+b.x, +b.z) < HOUSE_R ? "Bu joy yo'lga juda yaqin — ko'cha chetidan biroz ichkariroq tanlang" : "Bu joy band — yonidagi bo'sh joyni tanlang" });
     r.x = Math.round(b.x); r.z = Math.round(b.z); r.rot = isFinite(b.rot) ? +b.rot : 0;
     r.mahalla = String(b.mahalla || '').slice(0, 80); r.street = String(b.street || '').slice(0, 80);
@@ -647,6 +648,7 @@ async function api(req, res, url) {
     if (area > 20000) return send(res, 400, { error: 'Joy juda katta (ko\'pi bilan 20 000 m²)' });
     const plot = { x1, x2, z1, z2 };
     if (overlaps(plot)) return send(res, 409, { error: 'Bu joy band — boshqa joy tanlang' });
+    if (!ROADS) return send(res, 503, { error: "Shahrisabz xaritasi serverda hali tayyorlanmoqda — 1–2 daqiqadan keyin qayta urinib ko'ring" });
     if (!rectClear(x1, z1, x2, z2)) return send(res, 409, { error: "Joy yo'lga tushib qoldi — ko'chadan chetroqni tanlang" });
     if (db.residents.some((q) => !q.homeless && q.x > x1 - HOUSE_R && q.x < x2 + HOUSE_R && q.z > z1 - HOUSE_R && q.z < z2 + HOUSE_R) || db.houses.some((h) => h.x > x1 - HOUSE_R && h.x < x2 + HOUSE_R && h.z > z1 - HOUSE_R && h.z < z2 + HOUSE_R)) return send(res, 409, { error: 'Bu joyda birovning uyi bor — boshqa joy tanlang' });
     Object.assign(plot, {
