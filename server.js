@@ -572,11 +572,11 @@ async function api(req, res, url) {
       contact: String(b.contact || '').slice(0, 80), status: 'pending', mahalla: String(b.mahalla || '').slice(0, 80), street: String(b.street || '').slice(0, 80), createdAt: Date.now(),
     });
     plot.style = 'oddiy'; plot.built = false; // joy bo'sh — uy pulga quriladi
-    if ((r.balance || 0) >= plot.price) { // hamyonda pul yetarli — darhol sotiladi
-      r.balance -= plot.price; plot.status = 'sold'; plot.paidFromBalance = true;
-      addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${sotix} sotix)`);
-      db.notifications.unshift({ id: id(), plotId: plot.id, text: `✅ @${r.username} hamyonidan "${plot.name}" (${sotix} sotix) joyini sotib oldi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
-    } else db.notifications.unshift({ id: id(), plotId: plot.id, text: `@${r.username} "${plot.name}" (${plot.type}) uchun ${sotix} sotix (${area} m²) joyni sotib olmoqchi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency} (hamyonda ${(r.balance || 0).toLocaleString('ru-RU')})`, read: false, at: Date.now() });
+    // Hamyonda pul yetmasa — so'rov adminga bormaydi, rad etiladi
+    if ((r.balance || 0) < plot.price) return send(res, 402, { error: `Hamyoningizda pul yetarli emas: kerak ${plot.price.toLocaleString('ru-RU')}, bor ${(r.balance || 0).toLocaleString('ru-RU')} ${db.settings.currency}. Avval balansni to'ldiring.`, need: plot.price - (r.balance || 0) });
+    r.balance -= plot.price; plot.status = 'sold'; plot.paidFromBalance = true;
+    addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${sotix} sotix)`);
+    db.notifications.unshift({ id: id(), plotId: plot.id, text: `✅ @${r.username} hamyonidan "${plot.name}" (${sotix} sotix) joyini sotib oldi — ${plot.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
     db.plots.push(plot);
     save();
     return send(res, 200, { ok: true, plot: pubPlot(plot) });

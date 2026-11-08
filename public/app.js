@@ -505,14 +505,18 @@ async function onClick(e) {
       <label>Nima qurasiz?<select id="ptype">${state.types.map((t) => `<option>${esc(t)}</option>`).join('')}</select></label>
       <input id="pname" placeholder="Nomi (masalan: Umid market)">
       <input id="pcontact" placeholder="Telefon raqamingiz (admin bog'lanishi uchun)">
+      <div id="pnomoney"></div>
       <div class="row"><button class="ok" id="send">Sotib olish</button><button class="ghost" id="nope">Bekor</button></div>`);
-    const upd = () => { const sx = Number($('psx').value) || 0; $('ptot').textContent = `${sx} sotix (${Math.round(sx * 100)} m²) = ${money(Math.round(sx * per))}`; show(sx); };
-    $('psx').oninput = upd; upd(); $('psx').focus(); $('psx').select();
+    const upd = () => { const sx = Number($('psx').value) || 0, cost = Math.round(sx * per), ok = wallet.balance >= cost && sx > 0;
+      $('ptot').textContent = `${sx} sotix (${Math.round(sx * 100)} m²) = ${money(cost)}`; show(sx);
+      $('send').disabled = !ok; $('pnomoney').innerHTML = ok ? '' : `<span class="noc">✗ Hamyoningizda pul yetmaydi — yana ${money(cost - wallet.balance)} kerak.</span> <button class="ok" id="ptop2">💳 Balansni to'ldirish</button>`;
+      if ($('ptop2')) $('ptop2').onclick = () => { setMode('view'); openTopup(); }; };
+    $('psx').oninput = upd; loadWallet().then(upd); upd(); $('psx').focus(); $('psx').select();
     $('nope').onclick = () => { closeModal(); setMode('view'); };
     $('send').onclick = async () => {
       try {
         const j = await api('/api/plots/request', { ...me, x: cx, z: cz, sotix: Number($('psx').value), type: $('ptype').value, name: $('pname').value, contact: $('pcontact').value, street, mahalla });
-        modal(j.plot.status === 'sold' ? `<h3>✅ Joy sizniki!</h3><div>Pul hamyoningizdan yechildi. Binongiz xaritada qurildi — endi uni zamonaviy dizaynga o'zgartirishingiz mumkin.</div><button id="okk">Yaxshi</button>` : `<h3>✅ So'rov yuborildi</h3><div>Hamyoningizda pul yetarli emas. Admin to'lovni qabul qilgandan keyin joy sizniki bo'ladi.</div><button id="okk">Yaxshi</button>`);
+        modal(`<h3>✅ Joy sizniki!</h3><div>Pul hamyoningizdan yechildi. Endi "🏠 Uyim" bo'limidan u yerga uy qurishingiz mumkin.</div><button id="okk">Yaxshi</button>`);
         $('okk').onclick = closeModal; setMode('view'); await refresh();
       } catch (er) { alert(er.message); }
     };
