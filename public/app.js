@@ -374,10 +374,10 @@ function house(r, opts = {}) {
   const g = new THREE.Group();
   const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
-  const av = avatarSprite(r); av.position.y = top + 9; g.add(av);
-  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 3.6; g.add(l);
+  const av = avatarSprite(r); av.position.y = top + 19.5; g.add(av);
+  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 11.5; g.add(l);
   const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
-  if (adr) { const al = label('📍 ' + adr, { size: 22, bg: 'rgba(255,255,255,.88)', fg: '#4a5568', scale: .62 }); al.position.y = top + 1; g.add(al); }
+  if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; g.add(al); }
   g.position.set(r.x, 0, r.z);
   g.userData = opts.data || { kind: 'house', r };
   g.traverse((o) => { if (o.isMesh || o.isSprite) { o.userData = g.userData; clickable.push(o); } });
@@ -567,6 +567,7 @@ function searchAll(q) {
 function showResults(list) {
   let box = $('qres'); if (!box) { box = document.createElement('div'); box.id = 'qres'; box.className = 'card qres'; document.querySelector('.search').after(box); }
   if (!list) { box.remove(); return; }
+  const sr = document.querySelector('.search').getBoundingClientRect(); box.style.top = sr.bottom + 6 + 'px'; box.style.left = sr.left + 'px'; box.style.width = sr.width + 'px';
   box.innerHTML = list.length ? list.map((r, i) => `<div class="qitem" data-i="${i}"><b>${esc(r.t)}</b><div class="muted">📍 ${esc(r.a || '—')}</div></div>`).join('') : '<div class="muted">Hech narsa topilmadi</div>';
   box.querySelectorAll('.qitem').forEach((el) => (el.onclick = () => { const r = list[el.dataset.i]; flyTo(r.x, r.z, 70); showResults(null); }));
 }

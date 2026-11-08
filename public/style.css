@@ -55,3 +55,5 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 
 .qres{position:fixed;top:74px;left:12px;z-index:15;width:min(420px,calc(100% - 24px));max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
 .qitem{padding:8px 10px;border-radius:10px;cursor:pointer}.qitem:hover{background:#eef3ff}
+
+.top .status{position:static;flex-basis:100%;max-width:max-content;pointer-events:none}
