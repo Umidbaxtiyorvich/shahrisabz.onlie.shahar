@@ -370,14 +370,14 @@ function avatarSprite(r) {
   return sp;
 }
 const colorOf = (o, hueDefault) => o.colorHex ? new THREE.Color(o.colorHex) : hsl(o.color ?? hueDefault);
-function house(r) {
+function house(r, opts = {}) {
   const g = new THREE.Group();
   const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 9; g.add(av);
-  const l = label('@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 2.5; g.add(l);
+  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 2.5; g.add(l);
   g.position.set(r.x, 0, r.z);
-  g.userData = { kind: 'house', r };
+  g.userData = opts.data || { kind: 'house', r };
   g.traverse((o) => { if (o.isMesh || o.isSprite) { o.userData = g.userData; clickable.push(o); } });
   return g;
 }
@@ -391,7 +391,11 @@ function plotObj(p) {
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, .1, d)), new THREE.LineBasicMaterial({ color: p.status === 'sold' ? 0x1fa463 : 0xe0a100 }));
   edges.position.set(cx, .7, cz); g.add(edges);
   let top = 4;
-  if (p.status === 'sold') {
+  if (p.status === 'sold' && p.built === false) { // bo'sh joy: qoziqlar bilan o'ralgan, uy hali qurilmagan
+    for (let x = p.x1; x <= p.x2; x += 4) for (const z of [p.z1, p.z2]) box(g, .25, 1.2, .25, WOOD, x, 0, z);
+    for (let z = p.z1; z <= p.z2; z += 4) for (const x of [p.x1, p.x2]) box(g, .25, 1.2, .25, WOOD, x, 0, z);
+    top = 6;
+  } else if (p.status === 'sold') {
     const [col, h] = TYPE_STYLE[p.type] || TYPE_STYLE.boshqa;
     if (p.type === "bog'") {
       for (let i = 0; i < Math.min(30, p.area / 60); i++) { const t = new THREE.Mesh(new THREE.ConeGeometry(4, 12, 6), new THREE.MeshLambertMaterial({ color: 0x4cbf5d })); t.position.set(p.x1 + Math.random() * w, 6, p.z1 + Math.random() * d); g.add(t); }
@@ -414,7 +418,7 @@ function plotObj(p) {
     }
   }
   base.userData = { kind: 'plot', p }; clickable.push(base);
-  const l = label(`${TYPE_ICON[p.type] || ''} ${p.name}${p.status === 'pending' ? ' (kutilmoqda)' : ''}`, { size: 26, bg: p.status === 'sold' ? 'rgba(255,255,255,.95)' : 'rgba(255,233,168,.95)', scale: 1 });
+  const l = label(`${TYPE_ICON[p.type] || ''} ${p.name}${p.status === 'pending' ? ' (kutilmoqda)' : p.built === false ? ' 🏗️ qurilmagan' : ''}`, { size: 26, bg: p.status === 'sold' ? 'rgba(255,255,255,.95)' : 'rgba(255,233,168,.95)', scale: 1 });
   l.position.set(cx, top, cz); g.add(l);
   return g;
 }
@@ -427,7 +431,8 @@ async function refresh() {
   clickable.length = 0;
   objects.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
   objects.clear(); lodCars.length = 0;
-  state.residents.forEach((r) => objects.add(house(r)));
+  state.residents.forEach((r) => { if (!r.homeless) objects.add(house(r)); });
+  (state.houses || []).forEach((h) => { const o = state.residents.find((r) => r.username === h.owner) || {}; objects.add(house({ ...h, username: h.owner, avatar: o.avatar, cars: [] }, { label: `@${h.owner} ${h.n}`, data: { kind: 'xhouse', h } })); });
   state.plots.forEach((p) => objects.add(plotObj(p)));
   $('count').textContent = `${state.residents.length} ta uy`;
   renderMe();
@@ -439,7 +444,7 @@ function renderMe() {
   const r = myRes();
   $('guest').classList.toggle('hidden', !!r);
   $('me').classList.toggle('hidden', !r);
-  if (r) { $('mename').textContent = '@' + r.username; $('meaddr').textContent = [r.mahalla, r.street].filter(Boolean).join(', '); }
+  if (r) { $('mename').textContent = '@' + r.username; $('meaddr').textContent = r.homeless ? '🏚️ uysiz' : [r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', '); }
 }
 function flyTo(x, z, dist = 160) {
   const from = camera.position.clone(), fromT = controls.target.clone();
@@ -518,10 +523,14 @@ async function onClick(e) {
     const r = hit.object.userData.r;
     if (myRes() && r.username === me.username) return openMyPanel();
     return openHouseInfo(r);
+  } else if (hit?.object.userData.kind === 'xhouse') {
+    const h = hit.object.userData.h;
+    if (myRes() && h.owner === me.username) return openMyPanel();
+    return openAssetInfo({ owner: h.owner, kind: 'house', refId: h.id, title: `🏠 @${h.owner} ${h.n}-uyi`, addr: [h.mahalla, h.street, h.no && 'uy ' + h.no].filter(Boolean).join(', '), price: state.shop?.houses?.[h.style] || 0, x: h.x, z: h.z });
   } else if (hit?.object.userData.kind === 'plot') {
     const pl = hit.object.userData.p;
-    modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.sotix} sotix (${pl.area} m²) · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? '<button id="pup">🎨 Dizaynni o\'zgartirish</button>' : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' : ''}<button class="ghost" id="nope">Yopish</button></div>`);
-    $('nope').onclick = closeModal; if ($('pup')) $('pup').onclick = () => openDesigner(pl); if ($('pchat')) $('pchat').onclick = () => openChat(pl.owner);
+    modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.sotix} sotix (${pl.area} m²) · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? (pl.built === false ? '<button class="ok" id="pup">🏗️ Uy qurish</button>' : '<button id="pup">🎨 Dizaynni o\'zgartirish</button>') : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' + (pl.status === 'sold' ? '<button class="ok" id="pofr">💰 Sotib olish taklifi</button>' : '') : ''}<button class="ghost" id="nope">Yopish</button></div>`);
+    $('nope').onclick = closeModal; if ($('pup')) $('pup').onclick = () => openDesigner(pl); if ($('pchat')) $('pchat').onclick = () => openChat(pl.owner); if ($('pofr')) $('pofr').onclick = () => openOffer({ owner: pl.owner, kind: 'plot', refId: pl.id, title: pl.name });
   }
 }
 
@@ -535,11 +544,11 @@ function askNewPass() {
 }
 // ---- Tugmalar ----
 $('login').onclick = async () => {
-  try { const j = await api('/api/claim', { username: $('lu').value, password: $('lp').value }); me = { username: j.resident.username, password: $('lp').value }; store.set('me', me); await refresh(); flyTo(j.resident.x, j.resident.z); if (j.mustChange) askNewPass(); }
+  try { const j = await api('/api/claim', { username: $('lu').value, password: $('lp').value }); me = { username: j.resident.username, password: $('lp').value }; store.set('me', me); await refresh(); if (!j.resident.homeless) flyTo(j.resident.x, j.resident.z); else { const pl = state.plots.find((p) => p.owner === j.resident.username); if (pl) flyTo((pl.x1 + pl.x2) / 2, (pl.z1 + pl.z2) / 2); } if (j.mustChange) askNewPass(); }
   catch (er) { alert(er.message); }
 };
 $('logout').onclick = () => { me = null; store.set('me', null); renderMe(); setMode('view'); };
-$('gohome').onclick = () => { const r = myRes(); if (r) flyTo(r.x, r.z); openMyPanel(); };
+$('gohome').onclick = () => { const r = myRes(); if (r && !r.homeless) flyTo(r.x, r.z); openMyPanel(); };
 $('move').onclick = openMove;
 $('buy').onclick = () => setMode('buy');
 const doSearch = () => { const u = $('q').value.trim().replace(/^@/, '').toLowerCase(); const r = state.residents.find((x) => x.username === u) || state.residents.find((x) => x.username.includes(u)); if (r && u) flyTo(r.x, r.z); else alert('Topilmadi'); };
@@ -551,26 +560,73 @@ let wallet = { balance: 0, tx: [], shop: { houses: {}, cars: {}, repaint: 0 }, p
 async function loadWallet() { if (!myRes()) return; try { wallet = await api('/api/me', me); $('bal').textContent = money(wallet.balance); } catch {} }
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
 const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
+const ST_OFFER = { pending: '⏳ kutilmoqda', sotildi: '✅ sotildi', 'rad etildi': '❌ rad etildi', bekor: 'bekor qilindi', eskirgan: 'eskirgan' };
 async function openMyPanel() {
   await loadWallet(); const r = myRes(); if (!r) return;
-  modal(`<div class="row" style="align-items:center"><img class="ava" src="/avatar/${encodeURIComponent(r.username)}" onerror="this.style.visibility='hidden'"><div><h3>@${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div></div></div>
+  const addr = (o) => [o.mahalla, o.street, o.no && 'uy ' + o.no].filter(Boolean).join(', ') || '—';
+  const assets = [
+    ...(wallet.homeless ? [] : [{ kind: 'main', refId: '', title: '🏠 Asosiy uyim', o: r, x: r.x, z: r.z, design: () => openDesigner(null) }]),
+    ...wallet.houses.map((h) => ({ kind: 'house', refId: h.id, title: `🏠 ${h.n}-uyim`, o: h, x: h.x, z: h.z, design: () => openDesigner({ ...h, isHouse: true }) })),
+    ...wallet.plots.filter((p) => p.status === 'sold').map((p) => ({ kind: 'plot', refId: p.id, title: `📐 ${p.name} (${p.sotix} sotix)${p.built === false ? ' · 🏗️ qurilmagan' : ''}`, o: p, x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2, design: () => openDesigner(p) })),
+  ];
+  modal(`<div class="row" style="align-items:center">${ava(r.username)}<div><h3>@${esc(r.username)}</h3></div></div>
     <div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
-    <div class="row"><button id="pdes">🎨 Uy va mashina</button><button id="pmove">🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button></div>
-    ${wallet.plots.length ? '<b>Mening joylarim</b>' + wallet.plots.map((p, i) => `<div class="conv" data-i="${i}">${esc(p.name)} · ${p.sotix} sotix · ${p.status === 'sold' ? STYLE_NAMES[p.style] || p.style : '⏳ to\'lov kutilmoqda'}</div>`).join('') : ''}
+    ${wallet.homeless ? '<div class="hint" style="background:#fff3e0;padding:8px;border-radius:10px">🏚️ Asosiy uyingizni sotgansiz. Yangi joy sotib olib, unda pulga uy qurishingiz mumkin.</div>' : ''}
+    ${wallet.offersIn.length ? '<b>🤝 Sizga kelgan takliflar</b>' + wallet.offersIn.map((o) => `<div class="offer"><div>@${esc(o.initiator === 'buyer' ? o.buyer : o.seller)} — <b>${esc(o.title)}</b> uchun <b>${money(o.price)}</b> ${o.initiator === 'buyer' ? (o.buyerCanPay ? '<span class="okc">✓ puli yetarli</span>' : '<span class="noc">✗ puli yetmaydi</span>') : ''}</div><div class="row"><button class="ok" data-acc="${o.id}">${o.initiator === 'buyer' ? '✅ Sotildi' : '✅ Sotib olaman'}</button><button class="no" data-rej="${o.id}">Rad etish</button></div></div>`).join('') : ''}
+    <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy va mashina</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button></div>
+    <b>🏘️ Mening mulklarim</b>
+    ${assets.map((a, i) => `<div class="offer"><div><b>${esc(a.title)}</b><div class="muted">📍 ${esc(addr(a.o))}</div></div><div class="row"><button class="ghost" data-fly="${i}">🔍</button><button class="ghost" data-ed="${i}">✏️ Manzil</button><button class="ghost" data-ds="${i}">🎨</button></div></div>`).join('') || '<div class="muted">Mulk yo\'q</div>'}
+    ${wallet.offersOut.length ? `<details><summary class="muted">Mening takliflarim (${wallet.offersOut.length})</summary>${wallet.offersOut.map((o) => `<div class="muted">${fmtT(o.at)} · ${esc(o.title)} · ${money(o.price)} · ${o.initiator === 'buyer' ? '@' + esc(o.seller) + ' ga taklif' : '@' + esc(o.buyer) + ' ga sotish'} · ${ST_OFFER[o.status] || esc(o.status)} ${o.status === 'pending' ? `<a href="#" data-cnc="${o.id}">bekor qilish</a>` : ''}</div>`).join('')}</details>` : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
     <button class="ghost" id="nope">Yopish</button>`);
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
-  document.querySelectorAll('.conv[data-i]').forEach((el) => (el.onclick = () => { const p = wallet.plots[el.dataset.i]; flyTo((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2); if (p.status === 'sold') openDesigner(p); }));
+  document.querySelectorAll('[data-fly]').forEach((b) => (b.onclick = () => { const a = assets[b.dataset.fly]; closeModal(); flyTo(a.x, a.z, 70); }));
+  document.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => assets[b.dataset.ds].design()));
+  document.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => openEditAddr(assets[b.dataset.ed])));
+  const act = async (url, offerId, msg) => { try { await api(url, { ...me, offerId }); toast(msg); await refresh(); openMyPanel(); } catch (e) { alert(e.message); } };
+  document.querySelectorAll('[data-acc]').forEach((b) => (b.onclick = () => confirm('Tasdiqlaysizmi? Mulk va pul darhol o\'tadi.') && act('/api/sell/accept', b.dataset.acc, '✅ Sotildi!')));
+  document.querySelectorAll('[data-rej]').forEach((b) => (b.onclick = () => act('/api/sell/cancel', b.dataset.rej, 'Rad etildi')));
+  document.querySelectorAll('[data-cnc]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); act('/api/sell/cancel', b.dataset.cnc, 'Bekor qilindi'); }));
+}
+function openEditAddr(a) {
+  const mahs = [...new Set([...places.map((p) => p.name), ...officialPlaces.map((o) => o.n)])].sort();
+  modal(`<h3>✏️ ${esc(a.title)} — manzil</h3>
+    <label>Mahalla<input id="emah" list="emahl" value="${esc(a.o.mahalla || '')}"></label><datalist id="emahl">${mahs.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label>Ko'cha<input id="estr" list="estrl" value="${esc(a.o.street || '')}"></label><datalist id="estrl">${streetNames.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label>Uy raqami<input id="eno" value="${esc(a.o.no || '')}" placeholder="masalan 12 yoki 12A"></label>
+    <div class="row"><button class="ok" id="esave">Saqlash</button><button class="ghost" id="nope">Bekor</button></div>`);
+  $('nope').onclick = openMyPanel;
+  $('esave').onclick = async () => { try { await api('/api/house/edit', { ...me, kind: a.kind, refId: a.refId, mahalla: $('emah').value, street: $('estr').value, no: $('eno').value }); toast('✅ Manzil saqlandi'); await refresh(); openMyPanel(); } catch (e) { alert(e.message); } };
+}
+// Xaridor: boshqa odamning uyiga narx taklif qiladi (hamyondagi puldan ko'p yozib bo'lmaydi)
+async function openOffer(t) {
+  if (!myRes()) return alert('Taklif qilish uchun avval saytga kiring');
+  await loadWallet(); const bal = wallet.balance;
+  modal(`<h3>💰 Sotib olish taklifi</h3><div><b>${esc(t.title)}</b> · egasi @${esc(t.owner)}</div>
+    <div class="wallet">Hamyoningizda: <b>${money(bal)}</b></div>
+    <label>Qancha taklif qilasiz?<input id="oprice" type="number" min="1" max="${bal}" step="1000" placeholder="summa"></label>
+    <div class="muted" id="ohint"></div>
+    <div class="row"><button class="ok" id="osend" ${bal > 0 ? '' : 'disabled'}>Taklif yuborish</button><button class="ghost" id="nope">Bekor</button></div>`);
+  const chk = () => { const v = Number($('oprice').value); const bad = !(v > 0) || v > bal; $('osend').disabled = bad; $('ohint').innerHTML = v > bal ? `<span class="noc">✗ Hamyoningizda buncha pul yo'q (bor: ${money(bal)})</span>` : v > 0 ? `<span class="okc">✓ ${money(v)} — egasi tasdiqlasa uy sizga o'tadi</span>` : bal > 0 ? '' : '<span class="noc">Hamyoningiz bo\'sh</span>'; };
+  $('oprice').oninput = chk; chk();
+  $('nope').onclick = closeModal;
+  $('osend').onclick = async () => { try { await api('/api/buy/offer', { ...me, owner: t.owner, kind: t.kind, refId: t.refId, price: Number($('oprice').value) }); closeModal(); toast(`📨 Taklif @${t.owner} ga yuborildi`); } catch (e) { alert(e.message); } };
+}
+function openAssetInfo(t) {
+  modal(`<h3>${esc(t.title)}</h3><div class="muted">📍 ${esc(t.addr || '—')}</div><div class="wallet">🏷️ Dizayn qiymati: <b>${money(t.price)}</b></div>
+    <div class="row">${myRes() ? `<button class="ok" id="aofr">💰 Sotib olish taklifi</button><button id="achat">💬 Egasiga yozish</button>` : '<div class="hint">Taklif qilish uchun saytga kiring.</div>'}<button class="ghost" id="nope">Yopish</button></div>`);
+  $('nope').onclick = closeModal;
+  if ($('aofr')) { $('aofr').onclick = () => openOffer(t); $('achat').onclick = () => openChat(t.owner); }
 }
 const hex = (o, d = '#e9d8b4') => o?.colorHex || (o?.color !== undefined ? '#' + hsl(o.color).getHexString() : d);
 async function upgrade(body) { const j = await api('/api/upgrade', { ...me, ...body }); await refresh(); await loadWallet(); return j; }
 function openDesigner(plot) {
-  const r = myRes(), sh = wallet.shop, cur = plot || r;
+  const r = myRes(), sh = wallet.shop, cur = plot || r, isHouse = !!plot?.isHouse, unbuilt = plot && !isHouse && plot.built === false;
   let sel = { style: cur.style || 'oddiy', color: hex(cur) };
   const render = () => {
     const cars = plot ? [] : (r.cars || []);
-    modal(`<h3>🎨 ${plot ? esc(plot.name) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
-      <b>🏠 Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') ? '✓ hozirgi' : v ? money(v) : 'bepul'}</small></button>`).join('')}</div>
+    modal(`<h3>${unbuilt ? '🏗️ Uy qurish' : '🎨'} ${plot ? esc(plot.name || (isHouse ? plot.n + '-uy' : '')) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b>${unbuilt ? `<br>🏗️ Qurilish: <b>${money(sh.build)}</b> + tanlangan dizayn narxi` : ''}</div>
+      <b>🏠 Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : v ? money(v) : (unbuilt ? '+0' : 'bepul')}</small></button>`).join('')}</div>
       <div class="row" style="align-items:center"><label class="clr">🎨 Rang <input type="color" id="hcol" value="${sel.color}"></label><span class="muted">rang o'zgartirish: ${money(sh.repaint)}</span></div>
       <button class="ok" id="dbuy">Saqlash</button>
       ${plot ? '' : `<hr><b>🚗 Mashinalarim (${cars.length})</b>
@@ -582,7 +638,7 @@ function openDesigner(plot) {
     document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { sel.style = b.dataset.s; sel.color = $('hcol').value; render(); }));
     $('nope').onclick = closeModal;
     const go = async (body, msg) => { try { const j = await upgrade(body); toast(`${msg}${j.cost ? ' · −' + money(j.cost) : ''}`); render(); } catch (e) { alert(e.message); } };
-    $('dbuy').onclick = () => go({ plotId: plot?.id, style: sel.style, color: $('hcol').value }, '✅ Saqlandi');
+    $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value } : { plotId: plot?.id, style: sel.style, color: $('hcol').value }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
     if (!plot) {
       $('nbuy').onclick = () => go({ buyCar: { t: $('ncar').value, c: $('ncol').value } }, '🚗 Mashina uyingiz oldida!');
       document.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = () => go({ recolorCar: { i: +b.dataset.cr, c: document.querySelector(`[data-ci="${b.dataset.cr}"]`).value } }, '🎨 Rang o\'zgardi')));
@@ -599,14 +655,14 @@ function openHouseInfo(r) {
   const cars = r.cars || [];
   const plots = state.plots.filter((p) => p.owner === r.username && p.status === 'sold');
   const carsTotal = cars.reduce((a, c) => a + (sh.cars[c.t] || 0), 0), plotsTotal = plots.reduce((a, p) => a + (p.price || 0) + (sh.houses[p.style] || 0), 0);
-  modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div></div></div>
+  modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div></div></div>
     <div class="wallet">🏷️ Umumiy qiymati: <b>${money(housePrice + carsTotal + plotsTotal)}</b></div>
     <table class="itbl"><tr><td>${STYLE_NAMES[r.style] || '🏠 ' + esc(r.style || 'oddiy')} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
     ${cars.map((c) => `<tr><td>${CAR_NAMES[c.t] || esc(c.t)} <span class="sw" style="background:${esc(c.c)}"></span></td><td>${money(sh.cars[c.t] || 0)}</td></tr>`).join('')}
     ${plots.map((p) => `<tr><td>📐 ${esc(p.name)} · ${p.sotix} sotix · ${STYLE_NAMES[p.style] || esc(p.style || '')}</td><td>${money((p.price || 0) + (sh.houses[p.style] || 0))}</td></tr>`).join('')}</table>
-    <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button>` : '<div class="hint">Yozishish uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
+    <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button><button class="ok" id="hofr">💰 Sotib olish taklifi</button>` : '<div class="hint">Yozishish va taklif uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
   $('nope').onclick = closeModal; $('hfly').onclick = () => { closeModal(); flyTo(r.x, r.z, 45); };
-  if ($('hchat')) $('hchat').onclick = () => openChat(r.username);
+  if ($('hchat')) { $('hchat').onclick = () => openChat(r.username); $('hofr').onclick = () => openOffer({ owner: r.username, kind: 'main', refId: '', title: `@${r.username} ning uyi` }); }
 }
 // ---- Ko'chish: xaritadan yoki manzil bo'yicha ----
 function openMove() {

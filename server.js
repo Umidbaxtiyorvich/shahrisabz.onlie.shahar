@@ -18,13 +18,17 @@ function loadDb() {
 let db = loadDb();
 db.messages ||= [];
 db.tx ||= [];
-db.customPlaces ||= []; // admin qo'lda joylashtirgan mahalla/ko'chalar
+db.customPlaces ||= [];
+db.houses ||= []; // qo'shimcha (sotib olingan) uylar: {id, owner, x, z, style, colorHex, mahalla, street, no}
+db.offers ||= []; // sotish takliflari // admin qo'lda joylashtirgan mahalla/ko'chalar
 db.settings.pricePerSotix ||= (db.settings.pricePerM2 || 50000) * 100; // 1 sotix = 100 m²
 db.settings.shop ||= {
   houses: { oddiy: 0, zamonaviy: 5000000, kottej: 12000000, villa: 25000000, minora: 50000000 },
   cars: { yoq: 0, sedan: 3000000, jeep: 7000000, sport: 15000000, limuzin: 30000000 },
   repaint: 200000,
+  build: 10000000, // sotib olingan joyga uy qurish narxi (tekin uy faqat birinchi uy)
 };
+db.settings.shop.build ??= 10000000;
 db.dmQueue ||= [];
 db.settings.defaultPass ||= 'shahrisabz2026';
 db.settings.watcher ||= { sessionid: '', username: 'shahrisabz.online.shahar', pk: '', initialized: false, lastCheck: 0, lastError: '' };
@@ -65,8 +69,8 @@ function addFollower(username, source, pk) {
   return r;
 }
 
-const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
-const pubPlot = (p) => ({ colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
+const pub = (r) => ({ no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pubPlot = (p) => ({ built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function body(req) {
@@ -292,12 +296,29 @@ function migrateCars(r) { // eski bitta mashina → mashinalar ro'yxati
   return r.cars;
 }
 
+const pubHouse = (h) => ({ id: h.id, owner: h.owner, x: h.x, z: h.z, style: h.style || 'oddiy', colorHex: h.colorHex || null, color: h.color ?? 30, mahalla: h.mahalla || '', street: h.street || '', no: h.no || '', n: houseNumber(h) });
+// Egasining nechanchi uyi: asosiy uy = 1, keyingilari 2, 3 …
+function houseNumber(h) { const own = db.houses.filter((x) => x.owner === h.owner); const main = db.residents.find((r) => r.username === h.owner && !r.homeless) ? 1 : 0; return own.indexOf(h) + 1 + main; }
+function assetOf(r, kind, refId) {
+  if (kind === 'main') return r.homeless ? null : { title: 'Asosiy uy', obj: r };
+  if (kind === 'house') { const h = db.houses.find((x) => x.id === refId && x.owner === r.username); return h && { title: 'Uy', obj: h }; }
+  if (kind === 'plot') { const pl = db.plots.find((x) => x.id === refId && x.owner === r.username && x.status === 'sold'); return pl && { title: pl.name, obj: pl }; }
+  return null;
+}
+function transferAsset(seller, buyer, kind, refId) {
+  if (kind === 'main') { // asosiy uy xaridorga qo'shimcha uy bo'lib o'tadi, sotuvchi uysiz qoladi
+    db.houses.push({ id: id(), owner: buyer.username, x: seller.x, z: seller.z, style: seller.style || 'oddiy', colorHex: seller.colorHex || null, color: seller.color, mahalla: seller.mahalla, street: seller.street, no: seller.no || '', at: Date.now() });
+    seller.homeless = true; seller.x = 99999; seller.z = 99999;
+  } else if (kind === 'house') { const h = db.houses.find((x) => x.id === refId); h.owner = buyer.username; }
+  else if (kind === 'plot') { const pl = db.plots.find((x) => x.id === refId); pl.owner = buyer.username; }
+}
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, shop: db.settings.shop, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), houses: db.houses.map(pubHouse), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, shop: db.settings.shop, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -392,16 +413,75 @@ async function api(req, res, url) {
   if (m === 'POST' && p === '/api/move') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
+    if (r.homeless) return send(res, 400, { error: "Uyingizni sotgansiz — ko'chish uchun avval joy sotib olib, uy quring" });
     if (!isFinite(b.x) || !isFinite(b.z)) return send(res, 400, { error: 'Joy tanlang' });
     r.x = Math.round(b.x); r.z = Math.round(b.z);
     r.mahalla = String(b.mahalla || '').slice(0, 80); r.street = String(b.street || '').slice(0, 80);
     save();
     return send(res, 200, { ok: true, resident: pub(r) });
   }
+  // Uy ma'lumotlarini tahrirlash: mahalla, ko'cha, uy raqami
+  if (m === 'POST' && p === '/api/house/edit') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const a = assetOf(r, b.kind || 'main', b.refId); if (!a) return send(res, 404, { error: 'Uy topilmadi' });
+    const o = a.obj, cut = (v, n) => String(v ?? '').trim().slice(0, n);
+    if (b.mahalla !== undefined) o.mahalla = cut(b.mahalla, 80);
+    if (b.street !== undefined) o.street = cut(b.street, 80);
+    if (b.no !== undefined) o.no = cut(b.no, 20);
+    save(); return send(res, 200, { ok: true });
+  }
+  // Sotish: sotuvchi "Sotildi" bosadi → xaridorga taklif boradi → xaridor qabul qilsa pul va uy o'tadi
+  if (m === 'POST' && (p.startsWith('/api/sell/') || p === '/api/buy/offer')) {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    if (p === '/api/buy/offer') { // xaridor: boshqa odamning uyi/joyiga narx taklif qiladi
+      const owner = db.residents.find((x) => x.username === cleanName(b.owner));
+      if (!owner) return send(res, 404, { error: 'Egasi topilmadi' });
+      if (owner.username === r.username) return send(res, 400, { error: 'Bu o\'zingizning mulkingiz' });
+      const price = Math.round(Number(b.price)); if (!(price > 0)) return send(res, 400, { error: "Narxni to'g'ri yozing" });
+      if ((r.balance || 0) < price) return send(res, 402, { error: `Hamyoningizda ${price.toLocaleString('ru-RU')} yo'q (bor: ${(r.balance || 0).toLocaleString('ru-RU')})` });
+      const a = assetOf(owner, b.kind, b.refId); if (!a) return send(res, 404, { error: 'Bu mulk topilmadi' });
+      db.offers = db.offers.filter((o) => !(o.status === 'pending' && o.buyer === r.username && o.kind === b.kind && (o.refId || '') === (b.refId || '') && o.seller === owner.username));
+      const of = { id: id(), seller: owner.username, buyer: r.username, initiator: 'buyer', kind: b.kind, refId: b.refId || '', title: a.title, price, status: 'pending', at: Date.now() };
+      db.offers.push(of);
+      db.notifications.unshift({ id: id(), text: `🤝 @${r.username} @${owner.username} ning "${a.title}"iga ${price.toLocaleString('ru-RU')} ${db.settings.currency} taklif qildi`, read: false, at: Date.now() });
+      save(); return send(res, 200, { ok: true, offer: of });
+    }
+    if (p === '/api/sell/offer') {
+      const buyer = db.residents.find((x) => x.username === cleanName(b.buyer));
+      if (!buyer) return send(res, 404, { error: 'Bunday nikli odam saytda yo\'q' });
+      if (buyer.username === r.username) return send(res, 400, { error: 'O\'zingizga sota olmaysiz' });
+      const price = Math.round(Number(b.price)); if (!(price >= 0)) return send(res, 400, { error: "Narxni to'g'ri yozing" });
+      const a = assetOf(r, b.kind, b.refId); if (!a) return send(res, 404, { error: 'Sotiladigan mulk topilmadi' });
+      db.offers = db.offers.filter((o) => !(o.status === 'pending' && o.seller === r.username && o.kind === b.kind && (o.refId || '') === (b.refId || '')));
+      const of = { id: id(), seller: r.username, buyer: buyer.username, kind: b.kind, refId: b.refId || '', title: a.title, price, status: 'pending', at: Date.now() };
+      db.offers.push(of);
+      db.notifications.unshift({ id: id(), text: `🤝 @${r.username} "${a.title}"ni @${buyer.username} ga ${price.toLocaleString('ru-RU')} ${db.settings.currency} ga sotmoqda (xaridor tasdig'i kutilmoqda)`, read: false, at: Date.now() });
+      save(); return send(res, 200, { ok: true, offer: of });
+    }
+    const of = db.offers.find((o) => o.id === b.offerId && o.status === 'pending');
+    if (!of) return send(res, 404, { error: 'Taklif topilmadi yoki eskirgan' });
+    if (p === '/api/sell/cancel') { if (of.seller !== r.username && of.buyer !== r.username) return send(res, 403, { error: 'Ruxsat yo\'q' }); of.status = of.seller === r.username ? 'bekor' : 'rad etildi'; save(); return send(res, 200, { ok: true }); }
+    if (p === '/api/sell/accept') {
+      const accepter = of.initiator === 'buyer' ? of.seller : of.buyer;
+      if (accepter !== r.username) return send(res, 403, { error: 'Bu taklifni faqat ikkinchi tomon tasdiqlaydi' });
+      const seller = db.residents.find((x) => x.username === of.seller), buyerR = db.residents.find((x) => x.username === of.buyer);
+      if (!seller || !assetOf(seller, of.kind, of.refId)) { of.status = 'eskirgan'; save(); return send(res, 410, { error: 'Bu mulk endi sotuvchida yo\'q' }); }
+      if ((buyerR.balance || 0) < of.price) return send(res, 402, { error: `Xaridor @${buyerR.username} hamyonida pul yetarli emas` });
+      transferAsset(seller, buyerR, of.kind, of.refId);
+      buyerR.balance = (buyerR.balance || 0) - of.price; seller.balance = (seller.balance || 0) + of.price;
+      addTx(buyerR, -of.price, `Sotib olindi: ${of.title} (@${seller.username} dan)`); addTx(seller, of.price, `Sotildi: ${of.title} (@${buyerR.username} ga)`);
+      of.status = 'sotildi'; of.doneAt = Date.now();
+      db.offers.filter((o) => o.status === 'pending' && o.seller === seller.username && o.kind === of.kind && o.refId === of.refId).forEach((o) => (o.status = 'eskirgan'));
+      db.notifications.unshift({ id: id(), text: `✅ SOTILDI: @${seller.username} → @${buyerR.username}: "${of.title}" — ${of.price.toLocaleString('ru-RU')} ${db.settings.currency}`, read: false, at: Date.now() });
+      save(); return send(res, 200, { ok: true });
+    }
+  }
   if (m === 'POST' && p === '/api/me') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
-    return send(res, 200, { balance: r.balance || 0, tx: db.tx.filter((t) => t.user === r.username).slice(-30).reverse(), shop: db.settings.shop, plots: db.plots.filter((x) => x.owner === r.username && x.status !== 'rejected').map(pubPlot) });
+    return send(res, 200, { homeless: !!r.homeless, no: r.no || '', houses: db.houses.filter((h) => h.owner === r.username).map(pubHouse), offersIn: db.offers.filter((o) => o.status === 'pending' && (o.initiator === 'buyer' ? o.seller : o.buyer) === r.username).map((o) => ({ ...o, buyerCanPay: (db.residents.find((x) => x.username === o.buyer)?.balance || 0) >= o.price })), offersOut: db.offers.filter((o) => (o.initiator === 'buyer' ? o.buyer : o.seller) === r.username).slice(-20).reverse(), balance: r.balance || 0, tx: db.tx.filter((t) => t.user === r.username).slice(-30).reverse(), shop: db.settings.shop, plots: db.plots.filter((x) => x.owner === r.username && x.status !== 'rejected').map(pubPlot) });
   }
   // Uy / mashina / joydagi binoni o'zgartirish — hamyondan to'lanadi
   if (m === 'POST' && p === '/api/upgrade') {
@@ -409,13 +489,15 @@ async function api(req, res, url) {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
     const shop = db.settings.shop, HEX = /^#[0-9a-f]{6}$/i;
-    const target = b.plotId ? db.plots.find((x) => x.id === b.plotId && x.owner === r.username && x.status === 'sold') : r;
+    const target = b.plotId ? db.plots.find((x) => x.id === b.plotId && x.owner === r.username && x.status === 'sold') : b.houseId ? db.houses.find((h) => h.id === b.houseId && h.owner === r.username) : r;
+    if (!b.plotId && !b.houseId && r.homeless) return send(res, 400, { error: 'Sizda asosiy uy yo\'q' });
     if (!target) return send(res, 404, { error: 'Topilmadi' });
     migrateCars(r);
     let cost = 0; const what = [];
-    if (b.style && b.style !== (target.style || 'oddiy')) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
+    if (b.plotId && target.built === false) { if (!b.style) return send(res, 400, { error: 'Uy dizaynini tanlang' }); cost += shop.build; what.push('uy qurildi'); }
+    if (b.style && (b.style !== (target.style || 'oddiy') || (b.plotId && target.built === false))) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
     if (b.color && HEX.test(b.color) && b.color !== target.colorHex && !what.length) { cost += shop.repaint; what.push("uy rangi"); }
-    if (!b.plotId && b.buyCar) {
+    if (!b.plotId && !b.houseId && b.buyCar) {
       if (!(b.buyCar.t in shop.cars) || b.buyCar.t === 'yoq') return send(res, 400, { error: 'Mashina topilmadi' });
       if (r.cars.length >= 12) return send(res, 400, { error: "Uy oldiga ko'pi bilan 12 ta mashina sig'adi" });
       cost += shop.cars[b.buyCar.t]; what.push('yangi mashina: ' + b.buyCar.t);
@@ -426,6 +508,7 @@ async function api(req, res, url) {
     if ((r.balance || 0) < cost) return send(res, 402, { error: `Hamyonda pul yetarli emas. Kerak: ${cost.toLocaleString('ru-RU')} ${db.settings.currency}, bor: ${(r.balance || 0).toLocaleString('ru-RU')}` });
     r.balance = (r.balance || 0) - cost;
     if (b.style) target.style = b.style;
+    if (b.plotId && target.built === false) target.built = true;
     if (b.color && HEX.test(b.color)) target.colorHex = b.color.toLowerCase();
     if (!b.plotId && b.buyCar) r.cars.push({ t: b.buyCar.t, c: HEX.test(b.buyCar.c || '') ? b.buyCar.c.toLowerCase() : '#c0392b', price: shop.cars[b.buyCar.t], at: Date.now() });
     if (!b.plotId && b.recolorCar && r.cars[b.recolorCar.i] && HEX.test(b.recolorCar.c)) r.cars[b.recolorCar.i].c = b.recolorCar.c.toLowerCase();
@@ -456,7 +539,7 @@ async function api(req, res, url) {
       type: TYPES.includes(b.type) ? b.type : 'boshqa', name: String(b.name || '').slice(0, 60) || r.username,
       contact: String(b.contact || '').slice(0, 80), status: 'pending', mahalla: String(b.mahalla || '').slice(0, 80), street: String(b.street || '').slice(0, 80), createdAt: Date.now(),
     });
-    plot.style = 'oddiy';
+    plot.style = 'oddiy'; plot.built = false; // joy bo'sh — uy pulga quriladi
     if ((r.balance || 0) >= plot.price) { // hamyonda pul yetarli — darhol sotiladi
       r.balance -= plot.price; plot.status = 'sold'; plot.paidFromBalance = true;
       addTx(r, -plot.price, `Joy sotib olindi: ${plot.name} (${sotix} sotix)`);
@@ -517,7 +600,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, webhookLog: db.webhookLog, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), houses: db.houses.map(pubHouse), offers: db.offers.slice(-200).reverse(), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, webhookLog: db.webhookLog, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -569,6 +652,7 @@ async function api(req, res, url) {
       const sh = db.settings.shop;
       for (const k of ['houses', 'cars']) if (b[k]) for (const [n, v] of Object.entries(b[k])) { const nn = String(n).trim().toLowerCase().slice(0, 20); if (!nn) continue; if (v === null) delete sh[k][nn]; else if (Number(v) >= 0) sh[k][nn] = Math.round(Number(v)); }
       if (Number(b.repaint) >= 0) sh.repaint = Math.round(Number(b.repaint));
+      if (Number(b.build) >= 0) sh.build = Math.round(Number(b.build));
       save(); return send(res, 200, { ok: true, shop: sh });
     }
     if (p === '/api/admin/place') { // {n, kind: 'mahalla'|'kocha', coords: "39.05, 66.82"} — o'chirish: {n, kind, remove:true}
