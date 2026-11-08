@@ -59,3 +59,6 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 .top .status{position:static;flex-basis:100%;max-width:max-content;pointer-events:none}
 
 .dist{display:inline-block;background:#fff0f4;color:#d6245b;font-weight:600;font-size:12px;border-radius:8px;padding:1px 7px;margin-top:2px}
+
+.paycard{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:linear-gradient(135deg,#1d2b53,#2f4b9a);color:#fff;border-radius:14px;padding:12px 14px}
+.paycard .muted{color:#c9d4f5}.cnum{font-size:20px;font-weight:700;letter-spacing:2px;font-family:ui-monospace,monospace}

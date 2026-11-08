@@ -20,7 +20,10 @@ db.messages ||= [];
 db.tx ||= [];
 db.customPlaces ||= [];
 db.houses ||= []; // qo'shimcha (sotib olingan) uylar: {id, owner, x, z, style, colorHex, mahalla, street, no}
-db.offers ||= []; // sotish takliflari // admin qo'lda joylashtirgan mahalla/ko'chalar
+db.offers ||= [];
+db.topups ||= []; // balans to'ldirish so'rovlari
+db.settings.payment ||= { cards: [], note: "Pulni o'tkazgach, chek skrinshotini yuklang. Admin tekshirib, balansingizni to'ldiradi.", min: 10000 };
+const TOPUPS = path.join(__dirname, 'data', 'topups'); // sotish takliflari // admin qo'lda joylashtirgan mahalla/ko'chalar
 db.settings.pricePerSotix ||= (db.settings.pricePerM2 || 50000) * 100; // 1 sotix = 100 m²
 db.settings.shop ||= {
   houses: { oddiy: 0, zamonaviy: 5000000, kottej: 12000000, villa: 25000000, minora: 50000000 },
@@ -478,6 +481,30 @@ async function api(req, res, url) {
       save(); return send(res, 200, { ok: true });
     }
   }
+  // ---- Balansni to'ldirish: karta ma'lumoti → foydalanuvchi o'tkazadi → chek skrinshoti → admin tasdiqlaydi ----
+  if (m === 'POST' && p === '/api/topup/info') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const pay = db.settings.payment;
+    return send(res, 200, { cards: pay.cards.filter((c) => c.active !== false).map(({ number, holder, bank, link }) => ({ number, holder, bank, link })), note: pay.note, min: pay.min, my: db.topups.filter((t) => t.user === r.username).slice(-10).reverse().map(({ id, amount, status, at, reason }) => ({ id, amount, status, at, reason })) });
+  }
+  if (m === 'POST' && p === '/api/topup/request') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const amount = Math.round(Number(b.amount)), pay = db.settings.payment;
+    if (!(amount >= (pay.min || 1))) return send(res, 400, { error: `Eng kam summa: ${(pay.min || 1).toLocaleString('ru-RU')} ${db.settings.currency}` });
+    if (amount > 1e11) return send(res, 400, { error: 'Summa juda katta' });
+    if (!b.file?.data || !String(b.file.type || '').startsWith('image/')) return send(res, 400, { error: "To'lov cheki skrinshotini (rasm) yuklang" });
+    const buf = Buffer.from(String(b.file.data).split(',').pop(), 'base64');
+    if (buf.length > 10e6) return send(res, 413, { error: 'Rasm 10 MB dan katta' });
+    if (db.topups.filter((t) => t.user === r.username && t.status === 'pending').length >= 5) return send(res, 429, { error: "Sizda 5 ta tekshirilmagan so'rov bor — admin javobini kuting" });
+    const ext = (String(b.file.type).split('/')[1] || 'jpg').replace(/[^a-z0-9]/g, '').slice(0, 5);
+    const fn = id() + id() + '.' + ext; fs.mkdirSync(TOPUPS, { recursive: true }); fs.writeFileSync(path.join(TOPUPS, fn), buf);
+    const t = { id: id(), user: r.username, amount, card: String(b.card || '').slice(0, 40), img: fn, status: 'pending', at: Date.now() };
+    db.topups.push(t);
+    db.notifications.unshift({ id: id(), text: `💳 @${r.username} balansni ${amount.toLocaleString('ru-RU')} ${db.settings.currency} ga to'ldirmoqchi — chekni tekshiring`, read: false, at: Date.now() });
+    save(); return send(res, 200, { ok: true });
+  }
   if (m === 'POST' && p === '/api/me') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
@@ -600,7 +627,7 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 401, { error: 'Admin emas' });
     const b = m === 'POST' ? await body(req) : {};
-    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), houses: db.houses.map(pubHouse), offers: db.offers.slice(-200).reverse(), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, webhookLog: db.webhookLog, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
+    if (p === '/api/admin/data') { const ig = db.settings.instagram; return send(res, 200, { pendingTopups: db.topups.filter((t) => t.status === 'pending').length, residents: db.residents.map((r) => ({ ...pub(r), balance: r.balance || 0 })), houses: db.houses.map(pubHouse), offers: db.offers.slice(-200).reverse(), shop: db.settings.shop, plots: db.plots, notifications: db.notifications, settings: { ...db.settings, instagram: { igUserId: ig.igUserId, verifyToken: ig.verifyToken, username: ig.username, lastSync: ig.lastSync, hasToken: !!ig.token, expiresAt: ig.expiresAt || 0, oauthReady: !!(IG_APP_ID && IG_APP_SECRET) } }, browserWatcher: db.settings.browserWatcher || null, followerStats: db.followerStats.slice(-300), residentsFromFollow: db.residents.filter((r) => r.source === 'follow').length, lastWebhook: db.settings.lastWebhook || 0, webhookLog: db.webhookLog, watcher: { username: db.settings.watcher.username, connected: !!db.settings.watcher.sessionid, lastCheck: db.settings.watcher.lastCheck, lastError: db.settings.watcher.lastError }, followSecret: FOLLOW_SECRET, messageCount: db.messages.length }); }
     if (p === '/api/admin/followers') {
       const names = String(b.usernames || '').split(/[\s,;]+/).filter(Boolean);
       const added = names.map((n) => addFollower(n, 'admin')).filter(Boolean).map((r) => r.username);
@@ -668,6 +695,25 @@ async function api(req, res, url) {
       }
       save(); return send(res, 200, { ok: true });
     }
+    if (p === '/api/admin/payment') { // karta(lar) va yo'riqnoma
+      const pay = db.settings.payment;
+      if (Array.isArray(b.cards)) pay.cards = b.cards.slice(0, 10).map((c) => ({ number: String(c.number || '').replace(/[^\d ]/g, '').trim().slice(0, 23), holder: String(c.holder || '').slice(0, 60), bank: String(c.bank || '').slice(0, 40), link: /^https:\/\//.test(c.link || '') ? String(c.link).slice(0, 300) : '', active: c.active !== false })).filter((c) => c.number.replace(/ /g, '').length >= 12);
+      if (b.note !== undefined) pay.note = String(b.note).slice(0, 500);
+      if (Number(b.min) >= 0) pay.min = Math.round(Number(b.min));
+      save(); return send(res, 200, { ok: true, payment: pay });
+    }
+    if (p === '/api/admin/topups') return send(res, 200, { topups: db.topups.slice(-300).reverse(), payment: db.settings.payment });
+    if (p === '/api/admin/topup') {
+      const t = db.topups.find((x) => x.id === b.id); if (!t) return send(res, 404, { error: 'Topilmadi' });
+      if (t.status !== 'pending') return send(res, 400, { error: 'Bu so\'rov allaqachon ko\'rib chiqilgan' });
+      const r = db.residents.find((x) => x.username === t.user); if (!r) return send(res, 404, { error: 'Foydalanuvchi topilmadi' });
+      if (b.action === 'approve') {
+        const amt = Math.round(Number(b.amount ?? t.amount)); if (!(amt > 0)) return send(res, 400, { error: "Summa noto'g'ri" });
+        t.approved = amt; r.balance = (r.balance || 0) + amt; addTx(r, amt, "Balans to'ldirildi (karta orqali)");
+        t.status = 'approved';
+      } else { t.status = 'rejected'; t.reason = String(b.reason || '').slice(0, 200); }
+      t.doneAt = Date.now(); save(); return send(res, 200, { ok: true, balance: r.balance });
+    }
     if (p === '/api/admin/tx') return send(res, 200, { tx: db.tx.slice(-300).reverse() });
     if (p === '/api/admin/resident/delete') { db.residents = db.residents.filter((r) => r.id !== b.id); save(); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/resident/reset') { const r = db.residents.find((x) => x.id === b.id); if (r) { r.pass = hash(db.settings.defaultPass); r.mustChange = true; delete r.plainPass; r.delivered = false; save(); if (r.igsid) igPost(`${db.settings.instagram.igUserId}/messages`, { recipient: { id: r.igsid }, message: { text: passText(r) } }).then(() => { r.delivered = true; save(); }).catch(() => {}); } return send(res, 200, { ok: true, password: r && r.initialPass }); }
@@ -693,6 +739,12 @@ http.createServer(async (req, res) => {
       const site = SITE() || `https://${req.headers.host}`;
       const js = fs.readFileSync(path.join(__dirname, 'watcher.template.js'), 'utf8').replace('__SITE__', site).replace('__HOST__', new URL(site).hostname).replace('__SECRET__', FOLLOW_SECRET);
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }); return res.end(js);
+    }
+    if (url.pathname.startsWith('/topup-img/')) { // to'lov cheklari faqat admin uchun
+      if (url.searchParams.get('t') !== ADMIN_TOKEN) { res.writeHead(401); return res.end(); }
+      const f = path.normalize(path.join(TOPUPS, path.basename(url.pathname)));
+      if (!f.startsWith(TOPUPS) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/' + (path.extname(f).slice(1) === 'png' ? 'png' : 'jpeg') }); return fs.createReadStream(f).pipe(res);
     }
     if (url.pathname.startsWith('/uploads/')) {
       const f = path.normalize(path.join(UPLOADS, path.basename(url.pathname)));

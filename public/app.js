@@ -601,6 +601,39 @@ let wallet = { balance: 0, tx: [], shop: { houses: {}, cars: {}, repaint: 0 }, p
 async function loadWallet() { if (!myRes()) return; try { wallet = await api('/api/me', me); $('bal').textContent = money(wallet.balance); } catch {} }
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
 const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
+// ---- 💳 Balansni to'ldirish ----
+const TST = { pending: '⏳ tekshirilmoqda', approved: '✅ tushdi', rejected: '❌ rad etildi' };
+async function openTopup() {
+  if (!myRes()) return alert('Avval saytga kiring');
+  let info; try { info = await api('/api/topup/info', me); } catch (e) { return alert(e.message); }
+  let file = null;
+  const cards = info.cards;
+  modal(`<h3>💳 Balansni to'ldirish</h3>
+    <div class="wallet">💰 Hozirgi balans: <b>${money(wallet.balance)}</b></div>
+    <label>1. Qancha summa kerak?<input id="tamt" type="number" min="${info.min || 1}" step="1000" placeholder="masalan 50000"></label>
+    ${cards.length ? `<b>2. Shu kartaga o'tkazing</b> <span class="muted">(Click, Payme yoki bank ilovasi orqali)</span>
+      ${cards.map((c, i) => `<div class="paycard"><div><div class="muted">${esc(c.bank || 'Karta')}</div><div class="cnum">${esc(c.number)}</div><div class="muted">${esc(c.holder || '')}</div></div><div class="row"><button class="ghost" data-cp="${i}">📋 Nusxa</button>${c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener"><button class="ok">To'lash →</button></a>` : ''}</div></div>`).join('')}`
+      : '<div class="hint" style="background:#fff3e0;padding:8px;border-radius:10px">Admin hali karta raqamini kiritmagan. Keyinroq urinib ko\'ring.</div>'}
+    <label>3. To'lov cheki skrinshoti<input id="tfile" type="file" accept="image/*"></label>
+    <img id="tprev" class="mimg hidden" style="max-height:180px">
+    <div class="muted">${esc(info.note || '')}</div>
+    <div class="row"><button class="ok" id="tsend" ${cards.length ? '' : 'disabled'}>Yuborish</button><button class="ghost" id="nope">Yopish</button></div>
+    ${info.my.length ? `<details open><summary class="muted">Mening so'rovlarim</summary>${info.my.map((t) => `<div class="muted">${fmtT(t.at)} · <b>${money(t.amount)}</b> · ${TST[t.status] || t.status}${t.reason ? ' — ' + esc(t.reason) : ''}</div>`).join('')}</details>` : ''}`);
+  $('nope').onclick = closeModal;
+  document.querySelectorAll('[data-cp]').forEach((b) => (b.onclick = async () => { const n = cards[b.dataset.cp].number.replace(/ /g, ''); try { await navigator.clipboard.writeText(n); toast('📋 Karta raqami nusxalandi'); } catch { prompt('Karta raqami:', n); } }));
+  $('tfile').onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return; if (f.size > 10e6) { alert('Rasm 10 MB dan katta'); e.target.value = ''; return; }
+    const rd = new FileReader(); rd.onload = () => { file = { type: f.type, data: rd.result }; $('tprev').src = rd.result; $('tprev').classList.remove('hidden'); }; rd.readAsDataURL(f);
+  };
+  $('tsend').onclick = async () => {
+    const amount = Number($('tamt').value);
+    if (!(amount >= (info.min || 1))) return alert(`Summani yozing (kamida ${money(info.min || 1)})`);
+    if (!file) return alert("To'lov cheki skrinshotini yuklang");
+    $('tsend').disabled = true; $('tsend').textContent = '⏳ Yuborilmoqda…';
+    try { await api('/api/topup/request', { ...me, amount, file, card: cards[0]?.number }); closeModal(); toast("✅ So'rov yuborildi — admin tasdiqlagach balansingizga tushadi"); }
+    catch (e) { alert(e.message); $('tsend').disabled = false; $('tsend').textContent = 'Yuborish'; }
+  };
+}
 const ST_OFFER = { pending: '⏳ kutilmoqda', sotildi: '✅ sotildi', 'rad etildi': '❌ rad etildi', bekor: 'bekor qilindi', eskirgan: 'eskirgan' };
 async function openMyPanel() {
   await loadWallet(); const r = myRes(); if (!r) return;
@@ -611,7 +644,7 @@ async function openMyPanel() {
     ...wallet.plots.filter((p) => p.status === 'sold').map((p) => ({ kind: 'plot', refId: p.id, title: `📐 ${p.name} (${p.sotix} sotix)${p.built === false ? ' · 🏗️ qurilmagan' : ''}`, o: p, x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2, design: () => openDesigner(p) })),
   ];
   modal(`<div class="row" style="align-items:center">${ava(r.username)}<div><h3>@${esc(r.username)}</h3></div></div>
-    <div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
+    <div class="wallet row" style="justify-content:space-between;align-items:center"><span>💰 Hamyon: <b>${money(wallet.balance)}</b></span><button class="ok" id="ptop">💳 To'ldirish</button></div>
     ${wallet.homeless ? '<div class="hint" style="background:#fff3e0;padding:8px;border-radius:10px">🏚️ Asosiy uyingizni sotgansiz. Yangi joy sotib olib, unda pulga uy qurishingiz mumkin.</div>' : ''}
     ${wallet.offersIn.length ? '<b>🤝 Sizga kelgan takliflar</b>' + wallet.offersIn.map((o) => `<div class="offer"><div>@${esc(o.initiator === 'buyer' ? o.buyer : o.seller)} — <b>${esc(o.title)}</b> uchun <b>${money(o.price)}</b> ${o.initiator === 'buyer' ? (o.buyerCanPay ? '<span class="okc">✓ puli yetarli</span>' : '<span class="noc">✗ puli yetmaydi</span>') : ''}</div><div class="row"><button class="ok" data-acc="${o.id}">${o.initiator === 'buyer' ? '✅ Sotildi' : '✅ Sotib olaman'}</button><button class="no" data-rej="${o.id}">Rad etish</button></div></div>`).join('') : ''}
     <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy va mashina</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button></div>
@@ -620,6 +653,7 @@ async function openMyPanel() {
     ${wallet.offersOut.length ? `<details><summary class="muted">Mening takliflarim (${wallet.offersOut.length})</summary>${wallet.offersOut.map((o) => `<div class="muted">${fmtT(o.at)} · ${esc(o.title)} · ${money(o.price)} · ${o.initiator === 'buyer' ? '@' + esc(o.seller) + ' ga taklif' : '@' + esc(o.buyer) + ' ga sotish'} · ${ST_OFFER[o.status] || esc(o.status)} ${o.status === 'pending' ? `<a href="#" data-cnc="${o.id}">bekor qilish</a>` : ''}</div>`).join('')}</details>` : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
     <button class="ghost" id="nope">Yopish</button>`);
+  $('ptop').onclick = openTopup;
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
   document.querySelectorAll('[data-fly]').forEach((b) => (b.onclick = () => { const a = assets[b.dataset.fly]; closeModal(); flyTo(a.x, a.z, 70); }));
   document.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => assets[b.dataset.ds].design()));
@@ -811,6 +845,7 @@ async function checkUnread() {
 }
 setInterval(checkUnread, 10000);
 $('inbox').onclick = openInbox;
+$('topup').onclick = openTopup;
 
 // ---- Animatsiya ----
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
