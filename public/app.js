@@ -375,7 +375,9 @@ function house(r, opts = {}) {
   const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 9; g.add(av);
-  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 2.5; g.add(l);
+  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 3.6; g.add(l);
+  const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
+  if (adr) { const al = label('📍 ' + adr, { size: 22, bg: 'rgba(255,255,255,.88)', fg: '#4a5568', scale: .62 }); al.position.y = top + 1; g.add(al); }
   g.position.set(r.x, 0, r.z);
   g.userData = opts.data || { kind: 'house', r };
   g.traverse((o) => { if (o.isMesh || o.isSprite) { o.userData = g.userData; clickable.push(o); } });
@@ -551,7 +553,26 @@ $('logout').onclick = () => { me = null; store.set('me', null); renderMe(); setM
 $('gohome').onclick = () => { const r = myRes(); if (r && !r.homeless) flyTo(r.x, r.z); openMyPanel(); };
 $('move').onclick = openMove;
 $('buy').onclick = () => setMode('buy');
-const doSearch = () => { const u = $('q').value.trim().replace(/^@/, '').toLowerCase(); const r = state.residents.find((x) => x.username === u) || state.residents.find((x) => x.username.includes(u)); if (r && u) flyTo(r.x, r.z); else alert('Topilmadi'); };
+// Qidiruv: nik yoki manzil (mahalla, ko'cha, uy raqami) bo'yicha — uylar, qo'shimcha uylar va joylar
+function searchAll(q) {
+  const t = nk(q.replace(/^@/, '')); if (!t) return [];
+  const words = q.toLowerCase().replace(/^@/, '').split(/[\s,]+/).filter(Boolean).map(nk).filter(Boolean);
+  const hit = (...f) => { const hay = f.map(nk).join(' '); return words.every((w) => hay.includes(w)); };
+  const out = [];
+  for (const r of state.residents) if (!r.homeless && hit(r.username, r.mahalla, r.street, r.no, r.no && 'uy' + r.no)) out.push({ t: '@' + r.username, a: [r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', '), x: r.x, z: r.z, exact: nk(r.username) === t });
+  for (const h of state.houses || []) if (hit(h.owner, h.mahalla, h.street, h.no, h.no && 'uy' + h.no)) out.push({ t: `@${h.owner} ${h.n}`, a: [h.mahalla, h.street, h.no && 'uy ' + h.no].filter(Boolean).join(', '), x: h.x, z: h.z });
+  for (const p of state.plots) if (hit(p.owner, p.name, p.mahalla, p.street, p.no)) out.push({ t: `📐 ${p.name} (@${p.owner})`, a: [p.mahalla, p.street, p.no && 'uy ' + p.no].filter(Boolean).join(', '), x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2 });
+  return out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0)).slice(0, 12);
+}
+function showResults(list) {
+  let box = $('qres'); if (!box) { box = document.createElement('div'); box.id = 'qres'; box.className = 'card qres'; document.querySelector('.search').after(box); }
+  if (!list) { box.remove(); return; }
+  box.innerHTML = list.length ? list.map((r, i) => `<div class="qitem" data-i="${i}"><b>${esc(r.t)}</b><div class="muted">📍 ${esc(r.a || '—')}</div></div>`).join('') : '<div class="muted">Hech narsa topilmadi</div>';
+  box.querySelectorAll('.qitem').forEach((el) => (el.onclick = () => { const r = list[el.dataset.i]; flyTo(r.x, r.z, 70); showResults(null); }));
+}
+const doSearch = () => { const list = searchAll($('q').value.trim()); if (list.length === 1) { flyTo(list[0].x, list[0].z, 70); showResults(null); } else showResults(list); };
+$('q').addEventListener('input', () => { const v = $('q').value.trim(); v.length >= 2 ? showResults(searchAll(v)) : showResults(null); });
+document.addEventListener('click', (e) => { if (!e.target.closest('.search, .qres')) showResults(null); });
 $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key === 'Enter' && doSearch());
 
 

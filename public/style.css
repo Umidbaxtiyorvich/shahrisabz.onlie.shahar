@@ -52,3 +52,6 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 
 .offer{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#f6f8fc;border-radius:12px;padding:8px 10px;flex-wrap:wrap}
 .okc{color:#1fa463;font-weight:600}.noc{color:#e24b4b;font-weight:600}button:disabled{opacity:.45;cursor:not-allowed}
+
+.qres{position:fixed;top:74px;left:12px;z-index:15;width:min(420px,calc(100% - 24px));max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.qitem{padding:8px 10px;border-radius:10px;cursor:pointer}.qitem:hover{background:#eef3ff}
