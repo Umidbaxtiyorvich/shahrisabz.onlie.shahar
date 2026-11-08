@@ -564,14 +564,33 @@ function searchAll(q) {
   for (const p of state.plots) if (hit(p.owner, p.name, p.mahalla, p.street, p.no)) out.push({ t: `📐 ${p.name} (@${p.owner})`, a: [p.mahalla, p.street, p.no && 'uy ' + p.no].filter(Boolean).join(', '), x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2 });
   return out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0)).slice(0, 12);
 }
+// Mening uyimdan masofa (asosiy uy; u bo'lmasa — birinchi mulkim)
+function myBase() {
+  const r = myRes(); if (!r) return null;
+  if (!r.homeless) return { x: r.x, z: r.z };
+  const h = (state.houses || []).find((x) => x.owner === r.username); if (h) return { x: h.x, z: h.z };
+  const p = state.plots.find((x) => x.owner === r.username && x.status === 'sold'); return p ? { x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2 } : null;
+}
+const fmtDist = (m) => (m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',') + ' km');
+function distText(x, z) { const b = myBase(); if (!b) return ''; const d = Math.hypot(x - b.x, z - b.z); return d < 15 ? '🏠 bu sizning uyingiz' : '📏 uyingizdan ' + fmtDist(d); }
 function showResults(list) {
   let box = $('qres'); if (!box) { box = document.createElement('div'); box.id = 'qres'; box.className = 'card qres'; document.querySelector('.search').after(box); }
   if (!list) { box.remove(); return; }
   const sr = document.querySelector('.search').getBoundingClientRect(); box.style.top = sr.bottom + 6 + 'px'; box.style.left = sr.left + 'px'; box.style.width = sr.width + 'px';
-  box.innerHTML = list.length ? list.map((r, i) => `<div class="qitem" data-i="${i}"><b>${esc(r.t)}</b><div class="muted">📍 ${esc(r.a || '—')}</div></div>`).join('') : '<div class="muted">Hech narsa topilmadi</div>';
-  box.querySelectorAll('.qitem').forEach((el) => (el.onclick = () => { const r = list[el.dataset.i]; flyTo(r.x, r.z, 70); showResults(null); }));
+  box.innerHTML = list.length ? list.map((r, i) => { const dt = distText(r.x, r.z); return `<div class="qitem" data-i="${i}"><b>${esc(r.t)}</b>${dt ? ` <span class="dist">${dt}</span>` : ''}<div class="muted">📍 ${esc(r.a || '—')}</div></div>`; }).join('') : '<div class="muted">Hech narsa topilmadi</div>';
+  box.querySelectorAll('.qitem').forEach((el) => (el.onclick = () => { const r = list[el.dataset.i]; goTo(r); }));
 }
-const doSearch = () => { const list = searchAll($('q').value.trim()); if (list.length === 1) { flyTo(list[0].x, list[0].z, 70); showResults(null); } else showResults(list); };
+function goTo(r) { flyTo(r.x, r.z, 70); showResults(null); const dt = distText(r.x, r.z); toast(`${r.t}${dt ? ' — ' + dt : ''}`); showDistLine(r.x, r.z); }
+// Xaritada uyimdan topilgan joygacha chiziq
+let distLine = null;
+function showDistLine(x, z) {
+  if (distLine) { scene.remove(distLine); distLine = null; }
+  const b = myBase(); if (!b || Math.hypot(x - b.x, z - b.z) < 15) return;
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(b.x, 3, b.z), new THREE.Vector3(x, 3, z)]);
+  distLine = new THREE.Line(g, new THREE.LineDashedMaterial({ color: 0xff3b6b, dashSize: 12, gapSize: 8, depthTest: false })); distLine.computeLineDistances(); distLine.renderOrder = 20; scene.add(distLine);
+  setTimeout(() => { if (distLine) { scene.remove(distLine); distLine = null; } }, 20000);
+}
+const doSearch = () => { const list = searchAll($('q').value.trim()); if (list.length === 1) goTo(list[0]); else showResults(list); };
 $('q').addEventListener('input', () => { const v = $('q').value.trim(); v.length >= 2 ? showResults(searchAll(v)) : showResults(null); });
 document.addEventListener('click', (e) => { if (!e.target.closest('.search, .qres')) showResults(null); });
 $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key === 'Enter' && doSearch());
@@ -635,7 +654,7 @@ async function openOffer(t) {
   $('osend').onclick = async () => { try { await api('/api/buy/offer', { ...me, owner: t.owner, kind: t.kind, refId: t.refId, price: Number($('oprice').value) }); closeModal(); toast(`📨 Taklif @${t.owner} ga yuborildi`); } catch (e) { alert(e.message); } };
 }
 function openAssetInfo(t) {
-  modal(`<h3>${esc(t.title)}</h3><div class="muted">📍 ${esc(t.addr || '—')}</div><div class="wallet">🏷️ Dizayn qiymati: <b>${money(t.price)}</b></div>
+  modal(`<h3>${esc(t.title)}</h3><div class="muted">📍 ${esc(t.addr || '—')}</div>${t.x !== undefined && distText(t.x, t.z) ? `<div class="dist">${distText(t.x, t.z)}</div>` : ''}<div class="wallet">🏷️ Dizayn qiymati: <b>${money(t.price)}</b></div>
     <div class="row">${myRes() ? `<button class="ok" id="aofr">💰 Sotib olish taklifi</button><button id="achat">💬 Egasiga yozish</button>` : '<div class="hint">Taklif qilish uchun saytga kiring.</div>'}<button class="ghost" id="nope">Yopish</button></div>`);
   $('nope').onclick = closeModal;
   if ($('aofr')) { $('aofr').onclick = () => openOffer(t); $('achat').onclick = () => openChat(t.owner); }
@@ -677,7 +696,7 @@ function openHouseInfo(r) {
   const cars = r.cars || [];
   const plots = state.plots.filter((p) => p.owner === r.username && p.status === 'sold');
   const carsTotal = cars.reduce((a, c) => a + (sh.cars[c.t] || 0), 0), plotsTotal = plots.reduce((a, p) => a + (p.price || 0) + (sh.houses[p.style] || 0), 0);
-  modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div></div></div>
+  modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div>${distText(r.x, r.z) ? `<div class="dist">${distText(r.x, r.z)}</div>` : ''}</div></div>
     <div class="wallet">🏷️ Umumiy qiymati: <b>${money(housePrice + carsTotal + plotsTotal)}</b></div>
     <table class="itbl"><tr><td>${STYLE_NAMES[r.style] || '🏠 ' + esc(r.style || 'oddiy')} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
     ${cars.map((c) => `<tr><td>${CAR_NAMES[c.t] || esc(c.t)} <span class="sw" style="background:${esc(c.c)}"></span></td><td>${money(sh.cars[c.t] || 0)}</td></tr>`).join('')}
