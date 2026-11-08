@@ -70,6 +70,12 @@ export function makeBuildings(H) {
       for (const [x, z] of [[-5, 2.5], [5, -2.5]]) box(g, 3, .5, .8, WOOD, x, .4, z); return 9; },
     factory(g, c) { pave(g, 38, 34, 0); box(g, 28, 10, 18, M(0x9aa3ad), 0, 0, -4); for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.CylinderGeometry(0, 4, 2.4, 3), M(c)); r.rotation.z = Math.PI / 2; r.rotation.y = Math.PI / 2; r.position.set(-10.5 + i * 7, 11, -4); r.scale.set(1, 1, 4.4); g.add(r); }
       cyl(g, 1.2, 22, BRICK(), 12, 0, -12, 14); for (let k = 0; k < 3; k++) box(g, 4, 3.6, 4, M(0x8b6d4a), -12 + k * 5, 0, 10); return 24; },
+    busstop(g, c) { pave(g, 12, 6, 0); box(g, 8, .25, 2.6, M(c), 0, 3, 0); for (const x of [-3.6, 3.6]) cyl(g, .1, 3, FRAME, x, 0, -1, 6); box(g, 7.4, 2.6, .1, GLASS, 0, .3, -1.2); box(g, 6, .4, .8, WOOD, 0, .6, -.6); cyl(g, .08, 3.4, FRAME, 5, 0, 1, 6); box(g, 1, 1, .1, M(c, { emissive: c, emissiveIntensity: .4 }), 5, 3.4, 1); return 5; },
+    workshop(g, c) { lawn(g, 24, 24, 2); box(g, 14, 5, 10, BRICK(), 0, 0, -1); const roof = new THREE.Mesh(new THREE.CylinderGeometry(0, 9.4, 2.4, 4), ROOF(c)); roof.position.set(0, 6.2, -1); roof.rotation.y = Math.PI / 4; roof.scale.set(1.05, 1, .75); g.add(roof);
+      box(g, 6, 3.6, .3, WOOD, -2.5, 0, 4.05); win(g, 3, 2, 4, 1.5, 4.05); for (let i = 0; i < 4; i++) cyl(g, .45 - i * .05, .9, M([0xb5651d, 0x2e86de, 0xc0392b, 0x27ae60][i]), -4 + i * 1.4, 0, 7, 12); sign(g, 8, 4.3, 4.2, c); return 9; },
+    guesthouse(g, c) { lawn(g, 28, 28, 2); box(g, 16, 4.5, 12, WALL(0xf1e3c8)); box(g, 16, 4.2, 12, WALL(0xf1e3c8), 0, 4.5); for (const x of [-5, 0, 5]) { win(g, 2.4, 2.2, x, 1.2, 6.05); win(g, 2.4, 2.2, x, 5.6, 6.05); }
+      box(g, 16.4, .5, 12.4, WOOD, 0, 8.7); box(g, 14, .3, 2.4, WOOD, 0, 4.5, 7.2); for (let x = -6.5; x <= 6.5; x += 1.3) box(g, .12, 1, .12, WOOD, x, 4.8, 8.3); box(g, 2.4, 3.6, .3, WOOD, 0, 0, 6.1); tree(g, -10, 9); tree(g, 10, 9, 1.1); sign(g, 7, 9.4, 6.4, c); return 12; },
+    bakery(g, c) { lawn(g, 22, 22, 2); box(g, 12, 5, 9, BRICK()); box(g, 9, 3, .3, GLASS, -1, .4, 4.55); awning(g, 12, 3.8, 4.5, c); sign(g, 8, 4.3, 4.7, c); cyl(g, .8, 4, BRICK(), 4, 5, -2, 10); dome(g, 2.2, M(0xd9c9a8), -3, 5, -2); return 9; },
     garage(g, c) { pave(g, 28, 26, 2); box(g, 18, 6, 12, M(0xc9cdd2), 0, 0, -3); for (const x of [-5, 0, 5]) box(g, 4, 4.4, .3, M(0x6b7380), x, 0, 3.05); sign(g, 12, 5, 3.3, c);
       const cr = proceduralCar('jeep', M(0x2c3e50, { metalness: .7, roughness: .4 })); cr.position.set(-6, 0, 8); cr.rotation.y = Math.PI / 2; g.add(cr); return 9; },
   };

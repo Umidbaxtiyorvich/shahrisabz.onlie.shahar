@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { makeBuildings } from './buildings.js?v=1';
+import { makeBuildings } from './buildings.js?v=2';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -99,8 +99,17 @@ let streetNames = [], officialPlaces = [];
 let mahallaPolys = [], officialStreets = [];
 // Nomlarni solishtirish: x/h, o'/u, apostroflar farqini e'tiborsiz qoldiradi
 const nk = (s) => String(s || '').toLowerCase().replace(/[ʻʼ‘’`']/g, '').replace(/kochasi|ko'chasi|ko‘chasi|ulitsa|улица|street|tor ko.cha|berk ko.cha/g, '').replace(/h/g, 'x').replace(/o/g, 'u').replace(/[^a-zа-я0-9]/g, '');
+// Ochiq ma'lumotdagi va admin kiritgan joylar: faqat ma'lumot belgisi (sotilmaydi)
+let pois = []; const poiLabels = [];
+async function loadPois() {
+  try { pois = (await (await fetch('pois.json')).json()).joylar || []; } catch { return; }
+  for (const l of poiLabels) scene.remove(l); poiLabels.length = 0;
+  for (const p of pois) { const [x, z] = toXZ(p.lat, p.lon); p.x = x; p.z = z;
+    const l = label(`${p.i} ${p.n}`, { size: 24, bg: 'rgba(255,255,255,.93)', fg: '#1d2b53', scale: .9 }); l.position.set(x, 14, z); l.visible = false; l.userData = { kind: 'poi', p }; l.renderOrder = 9; scene.add(l); poiLabels.push(l); clickable.push(l); }
+}
+function openPoi(p) { modal(`<h3>${esc(p.i)} ${esc(p.n)}</h3><div class="muted">${esc(p.c)}${p.a ? ' · 📍 ' + esc(p.a) : ''}</div>${distText(p.x, p.z) ? `<div class="dist">${distText(p.x, p.z)}</div>` : ''}<div class="hint">ℹ️ Bu xaritadagi ma'lumot belgisi — sotilmaydi.${p.admin ? '' : ' Manba: © OpenStreetMap hissadorlari.'}</div><div class="row"><button class="ghost" id="pfly">🔍 Yaqindan</button><button class="ghost" id="nope">Yopish</button></div>`); $('nope').onclick = closeModal; $('pfly').onclick = () => { closeModal(); flyTo(p.x, p.z, 80); }; }
 function drawCustomPlaces() {
-  for (const c of state.customPlaces || []) {
+  for (const c of state.customPlaces || []) { if (c.kind === 'joy') continue;
     const [x, z] = toXZ(c.lat, c.lon);
     const l = c.kind === 'mahalla' ? label('📍 ' + c.n, { size: 32, bg: 'rgba(31,164,99,.9)', fg: '#fff', scale: 2.8 }) : label(c.n, { size: 24, bg: 'rgba(255,255,255,.85)', fg: '#4a5568', scale: 1.1 });
     l.position.set(x, c.kind === 'mahalla' ? 35 : 8, z); scene.add(l); (c.kind === 'mahalla' ? placeLabels : streetLabels).push(l);
@@ -457,7 +466,7 @@ let state = { residents: [], plots: [], settings: {}, types: [] };
 let me = store.get('me'); // {username,password}
 async function refresh() {
   state = await api('/api/state');
-  clickable.length = 0;
+  clickable.length = 0; clickable.push(...poiLabels);
   objects.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
   objects.clear(); lodCars.length = 0;
   state.residents.forEach((r) => { if (!r.homeless) objects.add(house(r)); });
@@ -478,7 +487,7 @@ function renderMe() {
 function flyTo(x, z, dist = 160) {
   const from = camera.position.clone(), fromT = controls.target.clone();
   const toT = new THREE.Vector3(x, 0, z), to = new THREE.Vector3(x, dist, z + dist * 1.1);
-  let t = 0; const step = () => { t = Math.min(1, t + .03); const e = 1 - Math.pow(1 - t, 3); camera.position.lerpVectors(from, to, e); controls.target.lerpVectors(fromT, toT, e); if (t < 1) requestAnimationFrame(step); }; step();
+  const t0 = performance.now(); const step = () => { const t = Math.min(1, (performance.now() - t0) / 900); const e = 1 - Math.pow(1 - t, 3); camera.position.lerpVectors(from, to, e); controls.target.lerpVectors(fromT, toT, e); if (t < 1) requestAnimationFrame(step); }; step(); // vaqt bo'yicha: sekin qurilmada ham 0.9 s
 }
 
 // ---- Modal ----
@@ -562,6 +571,7 @@ async function onClick(e) {
     const r = hit.object.userData.r;
     if (myRes() && r.username === me.username) return openMyPanel();
     return openHouseInfo(r);
+  } else if (hit?.object.userData.kind === 'poi') { return openPoi(hit.object.userData.p);
   } else if (hit?.object.userData.kind === 'xhouse') {
     const h = hit.object.userData.h;
     if (myRes() && h.owner === me.username) return openMyPanel();
@@ -599,7 +609,8 @@ function searchAll(q) {
   for (const r of state.residents) if (!r.homeless && hit(r.username, r.mahalla, r.street, r.no, r.no && 'uy' + r.no)) out.push({ t: '@' + r.username, a: [r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', '), x: r.x, z: r.z, exact: nk(r.username) === t });
   for (const h of state.houses || []) if (hit(h.owner, h.mahalla, h.street, h.no, h.no && 'uy' + h.no)) out.push({ t: `@${h.owner} ${h.n}`, a: [h.mahalla, h.street, h.no && 'uy ' + h.no].filter(Boolean).join(', '), x: h.x, z: h.z });
   for (const p of state.plots) if (hit(p.owner, p.name, p.mahalla, p.street, p.no)) out.push({ t: `📐 ${p.name} (@${p.owner})`, a: [p.mahalla, p.street, p.no && 'uy ' + p.no].filter(Boolean).join(', '), x: (p.x1 + p.x2) / 2, z: (p.z1 + p.z2) / 2 });
-  return out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0)).slice(0, 12);
+  for (const p of pois) if (p.x !== undefined && hit(p.n, p.c, p.a)) out.push({ t: `${p.i} ${p.n}`, a: [p.c, p.a].filter(Boolean).join(' · '), x: p.x, z: p.z });
+  return out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0)).slice(0, 15);
 }
 // Mening uyimdan masofa (asosiy uy; u bo'lmasa — birinchi mulkim)
 function myBase() {
@@ -891,7 +902,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 let frame = 0;
 (function loop() {
   requestAnimationFrame(loop); controls.update();
-  if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 1100 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; }
+  if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 1100 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; for (const l of poiLabels) l.visible = h < 700 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.6; }
   const t = controls.target; sun.position.set(t.x + sunDir.x * 200, sunDir.y * 200, t.z + sunDir.z * 200); sun.target.position.copy(t);
   if (frame % 20 === 0) { const wp = new THREE.Vector3(); for (const g of lodCars) { if (!g.parent) continue; g.getWorldPosition(wp); const near = wp.distanceTo(camera.position) < 260; const l = g.userData.lod; if (near) upgradeLod(g); if (l.real) { l.real.visible = near; l.simple.visible = !near; } } }
   renderer.render(scene, camera);
@@ -909,6 +920,6 @@ let frame = 0;
     const t = setInterval(async () => { try { const r = await fetch('osm.json', { method: 'HEAD' }); if (r.ok) { clearInterval(t); location.reload(); } } catch {} }, 30000);
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
-  drawCustomPlaces();
+  drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
 })();

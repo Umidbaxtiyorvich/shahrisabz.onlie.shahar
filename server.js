@@ -47,7 +47,24 @@ db.settings.shop.buildings ||= {
   kinoteatr: { n: 'Kinoteatr', i: '🎬', m: 'cinema', p: 70000000 }, park: { n: "Park / bog'", i: '🌳', m: 'park', p: 20000000 },
   zavod: { n: 'Zavod / sex', i: '🏭', m: 'factory', p: 120000000 }, ustaxona: { n: 'Avto ustaxona', i: '🔧', m: 'garage', p: 15000000 },
 };
-const MODELS = ['shop', 'market', 'bazaar', 'cafe', 'chaikhana', 'restaurant', 'wedding', 'hotel', 'pharmacy', 'hospital', 'school', 'kinder', 'bank', 'office', 'govt', 'mosque', 'gas', 'carshow', 'gym', 'stadium', 'cinema', 'park', 'factory', 'garage'];
+// Shahrisabzga xos qo'shimcha turlar (mavjud bazaga ham qo'shiladi)
+for (const [k, v] of Object.entries({
+  hunarmand: { n: 'Hunarmandchilik ustaxonasi', i: '🛠️', m: 'workshop', p: 12000000 }, kashtachilik: { n: "Kashtachilik do'koni", i: '🧵', m: 'shop', p: 10000000 },
+  kulolchilik: { n: 'Kulolchilik ustaxonasi', i: '🏺', m: 'workshop', p: 12000000 }, nonvoyxona: { n: 'Nonvoyxona', i: '🍞', m: 'bakery', p: 9000000 },
+  qassobxona: { n: 'Qassobxona', i: '🥩', m: 'shop', p: 9000000 }, mehmonuy: { n: 'Mehmon uyi (guesthouse)', i: '🛏️', m: 'guesthouse', p: 35000000 },
+  suvenir: { n: "Suvenir do'koni", i: '🎁', m: 'shop', p: 10000000 }, tikuvchilik: { n: 'Tikuvchilik sexi', i: '🪡', m: 'workshop', p: 18000000 },
+  avtobekat: { n: 'Avtobus bekati', i: '🚏', m: 'busstop', p: 3000000 }, pochta: { n: 'Pochta', i: '📮', m: 'office', p: 40000000 },
+  notarius: { n: 'Notarius idorasi', i: '📜', m: 'shop', p: 15000000 }, zags: { n: 'FHDYo (ZAGS)', i: '💍', m: 'govt', p: 120000000 },
+  gazxizmat: { n: 'Gaz xizmati idorasi', i: '🔥', m: 'office', p: 60000000 }, elektr: { n: 'Elektr tarmoqlari idorasi', i: '⚡', m: 'office', p: 60000000 },
+  sartaroshxona: { n: 'Sartaroshxona', i: '💈', m: 'shop', p: 7000000 }, gozallik: { n: 'Go\'zallik saloni', i: '💅', m: 'shop', p: 9000000 },
+  kitob: { n: "Kitob do'koni", i: '📚', m: 'shop', p: 9000000 }, telefon: { n: "Telefon do'koni", i: '📱', m: 'shop', p: 15000000 },
+  qurilish: { n: 'Qurilish mollari', i: '🧱', m: 'market', p: 35000000 }, moyka: { n: 'Avtomoyka', i: '🚿', m: 'garage', p: 14000000 },
+  oquvmarkaz: { n: "O'quv markazi", i: '🎓', m: 'school', p: 45000000 }, kollej: { n: 'Kollej / texnikum', i: '🏫', m: 'school', p: 90000000 },
+  muzey: { n: 'Muzey', i: '🏛️', m: 'govt', p: 150000000 }, poliklinika: { n: 'Poliklinika', i: '🩺', m: 'hospital', p: 90000000 },
+  militsiya: { n: 'Profilaktika inspektori punkti', i: '👮', m: 'shop', p: 20000000 }, yongin: { n: "Yong'in xavfsizligi qismi", i: '🚒', m: 'garage', p: 80000000 },
+  temiryol: { n: 'Temir yo\'l vokzali', i: '🚉', m: 'govt', p: 200000000 }, avtovokzal: { n: 'Avtovokzal', i: '🚌', m: 'carshow', p: 120000000 },
+})) db.settings.shop.buildings[k] ??= v;
+const MODELS = ['busstop', 'workshop', 'guesthouse', 'bakery', 'shop', 'market', 'bazaar', 'cafe', 'chaikhana', 'restaurant', 'wedding', 'hotel', 'pharmacy', 'hospital', 'school', 'kinder', 'bank', 'office', 'govt', 'mosque', 'gas', 'carshow', 'gym', 'stadium', 'cinema', 'park', 'factory', 'garage'];
 const stylePrice = (st) => { const sh = db.settings.shop; if (String(st).startsWith('b:')) { const bb = sh.buildings[st.slice(2)]; return bb ? bb.p : null; } return st in sh.houses ? sh.houses[st] : null; };
 db.dmQueue ||= [];
 db.settings.defaultPass ||= '2026';
@@ -180,6 +197,41 @@ async function getOsm() {
   return osmLoading;
 }
 getOsm().then((b) => b && buildRoads(b)).catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
+// ---- Ochiq ma'lumot: Shahrisabzdagi nomli joylar (OSM, ODbL) — xaritada faqat ma'lumot belgisi, sotilmaydi ----
+const POI_FILE = path.join(__dirname, 'data', 'pois.json');
+const POI_ICON = (t) => {
+  const a = t.amenity, sh = t.shop, tr = t.tourism, h = t.historic, l = t.leisure, o = t.office, hc = t.healthcare, cr = t.craft;
+  if (h || tr === 'attraction' || tr === 'museum') return ['🏛️', h === 'memorial' || h === 'monument' ? 'Yodgorlik' : tr === 'museum' ? 'Muzey' : 'Tarixiy joy'];
+  if (tr === 'hotel' || tr === 'guest_house' || tr === 'hostel') return ['🏨', 'Mehmonxona'];
+  if (a === 'place_of_worship') return ['🕌', 'Masjid / ibodatxona'];
+  if (a === 'school') return ['🏫', 'Maktab']; if (a === 'kindergarten') return ['🧸', "Bog'cha"]; if (a === 'college' || a === 'university') return ['🎓', "O'quv yurti"];
+  if (a === 'hospital' || a === 'clinic' || a === 'doctors' || hc) return ['🏥', 'Tibbiyot']; if (a === 'pharmacy') return ['💊', 'Dorixona'];
+  if (a === 'bank' || a === 'atm') return ['🏦', 'Bank']; if (a === 'post_office') return ['📮', 'Pochta'];
+  if (a === 'townhall' || o === 'government' || a === 'courthouse' || a === 'police') return ['🏢', 'Davlat idorasi'];
+  if (a === 'restaurant') return ['🍽️', 'Restoran']; if (a === 'cafe') return ['☕', 'Kafe']; if (a === 'fast_food') return ['🍔', 'Tezkor ovqat'];
+  if (a === 'marketplace') return ['🧺', 'Bozor']; if (a === 'fuel') return ['⛽', "Yoqilg'i"]; if (a === 'bus_station') return ['🚌', 'Avtovokzal'];
+  if (sh === 'supermarket' || sh === 'mall') return ['🏬', 'Supermarket']; if (sh) return ['🛒', "Do'kon"];
+  if (l === 'park' || l === 'garden') return ['🌳', 'Park']; if (l === 'stadium' || l === 'sports_centre') return ['🏟️', 'Sport'];
+  if (cr) return ['🛠️', 'Ustaxona']; if (o) return ['🏢', 'Idora'];
+  return ['📍', 'Joy'];
+};
+let poiLoading = null;
+async function loadPois() {
+  if (fs.existsSync(POI_FILE) || poiLoading) return;
+  poiLoading = (async () => {
+    const q = `[out:json][timeout:120];(nwr["name"]["amenity"](${CITY_BBOX});nwr["name"]["shop"](${CITY_BBOX});nwr["name"]["tourism"](${CITY_BBOX});nwr["name"]["historic"](${CITY_BBOX});nwr["name"]["leisure"](${CITY_BBOX});nwr["name"]["office"](${CITY_BBOX});nwr["name"]["craft"](${CITY_BBOX});nwr["name"]["healthcare"](${CITY_BBOX}););out center tags;`;
+    for (const u of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter']) {
+      try {
+        const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'shahrisabz-online-shahar' }, signal: AbortSignal.timeout(150000) });
+        if (!r.ok) continue; const j = await r.json(); const out = [];
+        for (const e of j.elements) { const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon; if (!lat || !e.tags?.name) continue; const [i, c] = POI_ICON(e.tags); out.push({ n: e.tags['name:uz'] || e.tags.name, i, c, lat: +lat.toFixed(6), lon: +lon.toFixed(6), a: [e.tags['addr:street'], e.tags['addr:housenumber']].filter(Boolean).join(' ') }); }
+        fs.mkdirSync(path.dirname(POI_FILE), { recursive: true }); fs.writeFileSync(POI_FILE, JSON.stringify({ manba: '© OpenStreetMap hissadorlari (ODbL)', joylar: out }));
+        console.log(`Joylar (POI) saqlandi: ${out.length} ta`); return;
+      } catch (e) { console.log('POI xato', e.message); }
+    }
+  })().finally(() => { poiLoading = null; });
+}
+setTimeout(() => loadPois(), 20000); setInterval(() => loadPois(), 15 * 60 * 1000);
 setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().then((b) => b && buildRoads(b)).catch(() => {}); else if (!ROADS) buildRoads(fs.readFileSync(OSM_FILE)); }, 2 * 60 * 1000);
 
 async function igPost(pathq, payload) {
@@ -827,7 +879,7 @@ async function api(req, res, url) {
       save(); return send(res, 200, { ok: true, shop: sh });
     }
     if (p === '/api/admin/place') { // {n, kind: 'mahalla'|'kocha', coords: "39.05, 66.82"} — o'chirish: {n, kind, remove:true}
-      const n = String(b.n || '').trim().slice(0, 60), kind = b.kind === 'mahalla' ? 'mahalla' : 'kocha';
+      const n = String(b.n || '').trim().slice(0, 60), kind = ['mahalla', 'joy'].includes(b.kind) ? b.kind : 'kocha';
       if (!n) return send(res, 400, { error: 'Nom kerak' });
       db.customPlaces = db.customPlaces.filter((x) => !(x.n === n && x.kind === kind));
       if (!b.remove) {
@@ -835,7 +887,7 @@ async function api(req, res, url) {
         if (!m) return send(res, 400, { error: "Koordinatani shunday kiriting: 39.05123, 66.82456" });
         let lat = +m[1], lon = +m[2]; if (lat > 60) [lat, lon] = [lon, lat];
         if (lat < 38.8 || lat > 39.3 || lon < 66.5 || lon > 67.2) return send(res, 400, { error: 'Bu koordinata Shahrisabzdan tashqarida' });
-        db.customPlaces.push({ n, kind, lat, lon, mahalla: String(b.mahalla || '').slice(0, 60) });
+        db.customPlaces.push({ n, kind, lat, lon, mahalla: String(b.mahalla || '').slice(0, 60), icon: String(b.icon || '').slice(0, 4), cat: String(b.cat || '').slice(0, 40) });
       }
       save(); return send(res, 200, { ok: true });
     }
@@ -902,6 +954,11 @@ http.createServer(async (req, res) => {
       const f = r && (await avatarFile(r));
       if (!f) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(f).pipe(res);
+    }
+    if (url.pathname === '/pois.json') { // OSM joylari + admin qo'lda kiritgan joylar
+      let osm = []; try { osm = JSON.parse(fs.readFileSync(POI_FILE, 'utf8')).joylar; } catch {}
+      const manual = db.customPlaces.filter((c) => c.kind === 'joy').map((c) => ({ n: c.n, i: c.icon || '📍', c: c.cat || 'Joy', lat: c.lat, lon: c.lon, a: c.mahalla || '', admin: true }));
+      return send(res, 200, { joylar: [...manual, ...osm] });
     }
     if (url.pathname === '/places.json') { // rasmiy ro'yxat + topilgan koordinatalar
       const list = JSON.parse(fs.readFileSync(path.join(PUB, 'mahallas-geo.json'), 'utf8')).mahallalar;
