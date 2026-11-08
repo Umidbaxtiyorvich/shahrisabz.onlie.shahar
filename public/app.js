@@ -161,7 +161,7 @@ function buildRoads(data) {
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
       const len = Math.hypot(bx - ax, bz - az); if (len < .1) continue;
-      segments.push({ ax, az, bx, bz, name: w.n });
+      segments.push({ ax, az, bx, bz, name: w.n, hw: wd / 2 + 2 });
       const ang = -Math.atan2(bz - az, bx - ax), mx = (ax + bx) / 2, mz = (az + bz) / 2;
       const strip = (L, W, y, uvx, uvy) => { const g = new THREE.PlaneGeometry(L, W); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * uvx, uv.getY(k) * uvy); g.rotateX(-Math.PI / 2); g.rotateY(ang); g.translate(mx, y, mz); return g; };
       geos.push(strip(len + wd * .6, wd, .3 + (wd > 10 ? .1 : 0), (len + wd * .6) / 6, wd / 6));
@@ -220,6 +220,23 @@ function nearestRoad(x, z) {
   }
   return best;
 }
+// Ko'cha bo'yidagi tartibli uchastka: yo'l chetidan HOUSE_R+2 m, eshigi ko'chaga qaragan; band bo'lsa ko'cha bo'ylab 34 m qadam bilan qidiradi
+function lotOnRoad(sg, px, pz, side) {
+  const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L, nx = -uz, nz = ux, off = (sg.hw || 5) + HOUSE_R + 2;
+  const t0 = Math.max(0, Math.min(L, (px - sg.ax) * ux + (pz - sg.az) * uz));
+  for (let k = 0; k < 40; k++) { const step = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 46; for (const sd of [side, -side]) {
+    const x = sg.ax + ux * (t0 + step) + nx * off * sd, z = sg.az + uz * (t0 + step) + nz * off * sd;
+    if (houseSpotFree(x, z)) return { x, z, rot: Math.atan2(-nx * sd, -nz * sd) };
+  } }
+  return null;
+}
+// Yo'l chetigacha masofa (manfiy — yo'l ustida)
+const SEGC = 60; let segGrid = null;
+function buildSegGrid() { segGrid = new Map(); for (const sg of segments) { const x0 = Math.floor((Math.min(sg.ax, sg.bx) - 30) / SEGC), x1 = Math.floor((Math.max(sg.ax, sg.bx) + 30) / SEGC), z0 = Math.floor((Math.min(sg.az, sg.bz) - 30) / SEGC), z1 = Math.floor((Math.max(sg.az, sg.bz) + 30) / SEGC); for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) { const k = x + ',' + z; if (!segGrid.has(k)) segGrid.set(k, []); segGrid.get(k).push(sg); } } }
+function roadClearC(x, z) { if (!segGrid) buildSegGrid(); let b = Infinity; const cx = Math.floor(x / SEGC), cz = Math.floor(z / SEGC); for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) for (const s of segGrid.get((cx + i) + ',' + (cz + k)) || []) { const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / L2)); const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t) - (s.hw || 5); if (d < b) b = d; } return Math.min(b, 999); }
+function rectClearC(cx, cz, half) { for (let x = -half; x <= half + .01; x += 3) for (let z = -half; z <= half + .01; z += 3) if (roadClearC(cx + x, cz + z) < .5) return false; return true; }
+const HOUSE_R = 23;
+function houseSpotFree(x, z) { return roadClearC(x, z) >= HOUSE_R && !state.residents.some((r) => !r.homeless && r.username !== me?.username && Math.hypot(r.x - x, r.z - z) < HOUSE_R * 2) && !(state.houses || []).some((h) => Math.hypot(h.x - x, h.z - z) < HOUSE_R * 2) && !state.plots.some((p) => x > p.x1 - HOUSE_R && x < p.x2 + HOUSE_R && z > p.z1 - HOUSE_R && z < p.z2 + HOUSE_R); }
 function nearestStreetName(x, z) {
   let best = '', bd = Infinity;
   for (const s of segments) { if (!s.name) continue; const d = Math.hypot((s.ax + s.bx) / 2 - x, (s.az + s.bz) / 2 - z); if (d < bd) { bd = d; best = s.name; } }
@@ -379,6 +396,7 @@ function house(r, opts = {}) {
   const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
   if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; g.add(al); }
   g.position.set(r.x, 0, r.z);
+  for (const c of g.children) if (!c.isSprite) c.rotation.y += r.rot || 0; // uy eshigi ko'chaga qaraydi (yozuvlar burilmaydi)
   g.userData = opts.data || { kind: 'house', r };
   g.traverse((o) => { if (o.isMesh || o.isSprite) { o.userData = g.userData; clickable.push(o); } });
   return g;
@@ -483,23 +501,29 @@ async function onClick(e) {
     if (!n || n.d > 80) return status("Yo'lga yaqinroq joyni tanlang (80 m ichida)");
     const dx = n.s.bx - n.s.ax, dz = n.s.bz - n.s.az, L = Math.hypot(dx, dz) || 1;
     const side = ((p.x - n.px) * -dz / L + (p.z - n.pz) * dx / L) >= 0 ? 1 : -1;
-    const x = n.px - dz / L * 16 * side, z = n.pz + dx / L * 16 * side;
+    const lot = lotOnRoad(n.s, p.x, p.z, side); if (!lot) return status("Bu ko'chada bo'sh joy yo'q — boshqa ko'chani tanlang");
+    const { x, z, rot } = lot;
     const street = n.s.name || nearestStreetName(x, z), mahalla = nearestMahalla(x, z);
     modal(`<h3>Ko'chib o'tasizmi?</h3><div>📍 ${esc(mahalla || 'Noma\'lum mahalla')}${street ? ', ' + esc(street) : ''}</div><div class="row"><button class="ok" id="yes">Ha, ko'chaman</button><button class="ghost" id="nope">Yo'q</button></div>`);
     $('nope').onclick = closeModal;
-    $('yes').onclick = async () => { try { await api('/api/move', { ...me, x, z, street, mahalla }); closeModal(); setMode('view'); await refresh(); flyTo(x, z); } catch (er) { alert(er.message); } };
+    $('yes').onclick = async () => { try { await api('/api/move', { ...me, x, z, rot, street, mahalla }); closeModal(); setMode('view'); await refresh(); flyTo(x, z); } catch (er) { alert(er.message); } };
     return;
   }
   if (mode === 'buy' && p) {
-    const cx = p.x, cz = p.z, street = nearestStreetName(cx, cz), mahalla = nearestMahalla(cx, cz), per = state.settings.pricePerSotix;
-    const show = (sx) => { // tanlangan sotixni xaritada kvadrat qilib ko'rsatish
+    let cx = p.x, cz = p.z; const per = state.settings.pricePerSotix;
+    // joyni yo'ldan chetga surish: belgilangan nuqtaga eng yaqin, yo'lga tegmaydigan markazni topadi
+    const fitPlot = (sx) => { const half = Math.sqrt(Math.max(sx, .1) * 100) / 2 + 1; if (rectClearC(p.x, p.z, half)) return [p.x, p.z]; for (let r = 4; r < 260; r += 4) for (let a = 0; a < 6.28; a += 4 / r) { const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; if (rectClearC(x, z, half)) return [x, z]; } return null; };
+    let street = nearestStreetName(cx, cz), mahalla = nearestMahalla(cx, cz);
+    const show = (sx) => { // tanlangan sotixni xaritada kvadrat qilib ko'rsatish (yo'lga tegmasligi uchun suriladi)
+      const f = fitPlot(sx); if (f) { [cx, cz] = f; street = nearestStreetName(cx, cz); mahalla = mahallaAt(cx, cz) || nearestMahalla(cx, cz); if ($('paddr')) $('paddr').textContent = '📍 ' + [mahalla, street].filter(Boolean).join(', '); }
+      if ($('pmoved')) $('pmoved').textContent = !f ? "⚠️ Bu atrofda yo'lga tegmaydigan joy topilmadi — boshqa joyni bosing" : Math.hypot(cx - p.x, cz - p.z) > 2 ? "↔️ Joy yo'lga tushmasligi uchun biroz chetga surildi" : '';
       if (preview) scene.remove(preview);
       const a = Math.sqrt(Math.max(sx, .1) * 100);
       preview = new THREE.Mesh(new THREE.PlaneGeometry(a, a), new THREE.MeshBasicMaterial({ color: 0x2f7cf6, transparent: true, opacity: .45 }));
       preview.rotation.x = -Math.PI / 2; preview.position.set(cx, .8, cz); scene.add(preview);
     };
     modal(`<h3>📐 Joy sotib olish</h3>
-      <div class="muted">📍 ${esc(mahalla)}${street ? ', ' + esc(street) : ''}</div>
+      <div class="muted" id="paddr">📍 ${esc(mahalla)}${street ? ', ' + esc(street) : ''}</div><div class="muted" id="pmoved"></div>
       <label>Necha sotix kerak? <span class="muted">(1 sotix = 100 m²)</span><input id="psx" type="number" min="0.5" max="200" step="0.5" value="6"></label>
       <div class="wallet">1 sotix: <b>${money(per)}</b><br>Jami: <b id="ptot"></b><br><span class="muted">Hamyonda: ${money(wallet.balance)}</span></div>
       <label>Nima qurasiz?<select id="ptype">${state.types.map((t) => `<option>${esc(t)}</option>`).join('')}</select></label>
@@ -507,7 +531,7 @@ async function onClick(e) {
       <input id="pcontact" placeholder="Telefon raqamingiz (admin bog'lanishi uchun)">
       <div id="pnomoney"></div>
       <div class="row"><button class="ok" id="send">Sotib olish</button><button class="ghost" id="nope">Bekor</button></div>`);
-    const upd = () => { const sx = Number($('psx').value) || 0, cost = Math.round(sx * per), ok = wallet.balance >= cost && sx > 0;
+    const upd = () => { const sx = Number($('psx').value) || 0, cost = Math.round(sx * per), ok = wallet.balance >= cost && sx > 0 && !!fitPlot(sx);
       $('ptot').textContent = `${sx} sotix (${Math.round(sx * 100)} m²) = ${money(cost)}`; show(sx);
       $('send').disabled = !ok; $('pnomoney').innerHTML = ok ? '' : `<span class="noc">✗ Hamyoningizda pul yetmaydi — yana ${money(cost - wallet.balance)} kerak.</span> <button class="ok" id="ptop2">💳 Balansni to'ldirish</button>`;
       if ($('ptop2')) $('ptop2').onclick = () => { setMode('view'); openTopup(); }; };
@@ -770,12 +794,11 @@ function openMove() {
     if (!cand.length && st && !mp) return alert(`«${$('mstr').value}» ko'chasining xaritadagi joyi hali kiritilmagan. Mahallasini ham tanlang yoki xaritadan tanlab ko'ching.`);
     if (!cand.length) return alert("Bunday ko'cha yoki mahalla topilmadi");
     if (mp) cand.sort((a, b) => Math.hypot((a.ax + a.bx) / 2 - mp.x, (a.az + a.bz) / 2 - mp.z) - Math.hypot((b.ax + b.bx) / 2 - mp.x, (b.az + b.bz) / 2 - mp.z));
-    // band bo'lmagan joy: uylar orasida kamida 25 m
-    for (const sg of cand.slice(0, 60)) for (let t = .15; t < 1; t += .2) for (const side of [1, -1]) {
-      const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L = Math.hypot(dx, dz) || 1;
-      const x = sg.ax + dx * t - dz / L * 16 * side, z = sg.az + dz * t + dx / L * 16 * side;
-      if (state.residents.some((r) => r.username !== me.username && Math.hypot(r.x - x, r.z - z) < 25)) continue;
-      try { await api('/api/move', { ...me, x, z, street: sg.name || nearestStreetName(x, z), mahalla: (mh && mp ? mp.name : '') || cpMah || mahallaAt(x, z) || nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(x, z); } catch (e) { alert(e.message); }
+    // ko'cha bo'yidagi tartibli bo'sh uchastka
+    for (const sg of cand.slice(0, 60)) {
+      const lot = lotOnRoad(sg, (sg.ax + sg.bx) / 2, (sg.az + sg.bz) / 2, 1); if (!lot) continue;
+      const { x, z, rot } = lot;
+      try { await api('/api/move', { ...me, x, z, rot, street: sg.name || nearestStreetName(x, z), mahalla: (mh && mp ? mp.name : '') || cpMah || mahallaAt(x, z) || nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(x, z); } catch (e) { alert(e.message); }
       return;
     }
     alert("Bu ko'chada bo'sh joy qolmagan — xaritadan tanlang");

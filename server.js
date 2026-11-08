@@ -68,16 +68,16 @@ function addFollower(username, source, pk) {
   if (!u) return null;
   let r = db.residents.find((x) => x.username === u);
   if (r) return r;
-  const s = edgeSpot();
+  const s = autoLot() || edgeSpot();
   const pw = db.settings.defaultPass;
-  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, mahalla: 'Shahar chekkasi', street: '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
+  r = { id: id(), username: u, link: 'https://instagram.com/' + u, x: s.x, z: s.z, rot: s.rot || 0, lot: !!s.street || s.rot !== undefined, mahalla: 'Shahar chekkasi', street: s.street || '', color: Math.floor(Math.random() * 360), createdAt: Date.now(), source, pass: hash(pw), initialPass: pw, mustChange: true, delivered: false };
   if (pk) r.pk = String(pk);
   db.residents.push(r);
   save();
   return r;
 }
 
-const pub = (r) => ({ no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pub = (r) => ({ rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
 const pubPlot = (p) => ({ built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
@@ -154,7 +154,7 @@ async function getOsm() {
         if (!out.ways.length) continue;
         const buf = Buffer.from(JSON.stringify(out));
         fs.mkdirSync(path.dirname(OSM_FILE), { recursive: true }); fs.writeFileSync(OSM_FILE, buf);
-        console.log(`OSM saqlandi: ${out.ways.length} yo'l, ${out.places.length} mahalla`);
+        console.log(`OSM saqlandi: ${out.ways.length} yo'l, ${out.places.length} mahalla`); buildRoads(buf);
         return buf;
       } catch (e) { console.log('OSM xato', u, e.message); }
     }
@@ -162,7 +162,7 @@ async function getOsm() {
   })().finally(() => { osmLoading = null; });
   return osmLoading;
 }
-getOsm().catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
+getOsm().then((b) => b && buildRoads(b)).catch(() => {}); // server ishga tushganda oldindan yuklab qo'yadi
 setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().catch(() => {}); }, 10 * 60 * 1000);
 
 async function igPost(pathq, payload) {
@@ -304,7 +304,7 @@ function migrateCars(r) { // eski bitta mashina → mashinalar ro'yxati
   return r.cars;
 }
 
-const pubHouse = (h) => ({ id: h.id, owner: h.owner, x: h.x, z: h.z, style: h.style || 'oddiy', colorHex: h.colorHex || null, color: h.color ?? 30, mahalla: h.mahalla || '', street: h.street || '', no: h.no || '', n: houseNumber(h) });
+const pubHouse = (h) => ({ rot: h.rot || 0, id: h.id, owner: h.owner, x: h.x, z: h.z, style: h.style || 'oddiy', colorHex: h.colorHex || null, color: h.color ?? 30, mahalla: h.mahalla || '', street: h.street || '', no: h.no || '', n: houseNumber(h) });
 // Egasining nechanchi uyi: asosiy uy = 1, keyingilari 2, 3 …
 function houseNumber(h) { const own = db.houses.filter((x) => x.owner === h.owner); const main = db.residents.find((r) => r.username === h.owner && !r.homeless) ? 1 : 0; return own.indexOf(h) + 1 + main; }
 function assetOf(r, kind, refId) {
@@ -315,10 +315,90 @@ function assetOf(r, kind, refId) {
 }
 function transferAsset(seller, buyer, kind, refId) {
   if (kind === 'main') { // asosiy uy xaridorga qo'shimcha uy bo'lib o'tadi, sotuvchi uysiz qoladi
-    db.houses.push({ id: id(), owner: buyer.username, x: seller.x, z: seller.z, style: seller.style || 'oddiy', colorHex: seller.colorHex || null, color: seller.color, mahalla: seller.mahalla, street: seller.street, no: seller.no || '', at: Date.now() });
+    db.houses.push({ id: id(), owner: buyer.username, x: seller.x, z: seller.z, rot: seller.rot || 0, style: seller.style || 'oddiy', colorHex: seller.colorHex || null, color: seller.color, mahalla: seller.mahalla, street: seller.street, no: seller.no || '', at: Date.now() });
     seller.homeless = true; seller.x = 99999; seller.z = 99999;
   } else if (kind === 'house') { const h = db.houses.find((x) => x.id === refId); h.owner = buyer.username; }
   else if (kind === 'plot') { const pl = db.plots.find((x) => x.id === refId); pl.owner = buyer.username; }
+}
+
+// ---- Yo'llar xaritasi (server tomonda): uylar va joylar yo'lga tushmasligi uchun ----
+const LAT0 = 39.0578, LON0 = 66.8297, KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110540;
+const toXZ = (lat, lon) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];
+const RW = { motorway: 20, trunk: 18, primary: 16, secondary: 13, tertiary: 11, residential: 8, unclassified: 8, road: 7, living_street: 6, service: 5, pedestrian: 5, track: 4 };
+let ROADS = null; const CELL = 60;
+function buildRoads(buf) {
+  try {
+    const j = JSON.parse(buf), segs = [], grid = new Map();
+    for (const w of j.ways) {
+      const pts = w.g.map(([la, lo]) => toXZ(la, lo)), hw = (RW[w.t] || 6) / 2 + 2; // +2 m trotuar
+      for (let i = 0; i < pts.length - 1; i++) {
+        const sg = { ax: pts[i][0], az: pts[i][1], bx: pts[i + 1][0], bz: pts[i + 1][1], hw, t: w.t, n: w.n };
+        if (Math.hypot(sg.bx - sg.ax, sg.bz - sg.az) < .5) continue;
+        segs.push(sg);
+        const x0 = Math.floor((Math.min(sg.ax, sg.bx) - 30) / CELL), x1 = Math.floor((Math.max(sg.ax, sg.bx) + 30) / CELL), z0 = Math.floor((Math.min(sg.az, sg.bz) - 30) / CELL), z1 = Math.floor((Math.max(sg.az, sg.bz) + 30) / CELL);
+        for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) { const k = x + ',' + z; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(sg); }
+      }
+    }
+    ROADS = { segs, grid }; lotQueue = null;
+    console.log(`Yo'llar indeksi: ${segs.length} bo'lak`);
+    relocateBadAuto();
+  } catch (e) { console.log("Yo'l indeksi xato:", e.message); }
+}
+// (x,z) nuqtadan eng yaqin yo'l chetigacha masofa (manfiy — yo'l ustida)
+function roadClear(x, z) {
+  if (!ROADS) return Infinity;
+  let best = Infinity; const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+  for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) for (const s of ROADS.grid.get((cx + i) + ',' + (cz + k)) || []) {
+    const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz, t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / L2));
+    best = Math.min(best, Math.hypot(x - s.ax - dx * t, z - s.az - dz * t) - s.hw);
+  }
+  return best;
+}
+const HOUSE_R = 23; // uy hovlisi radiusi (m): eng katta dizayn (villa) hovlisi bilan
+function spotFree(x, z, exceptUser) {
+  if (roadClear(x, z) < HOUSE_R) return false;
+  if (db.residents.some((r) => !r.homeless && r.username !== exceptUser && Math.hypot(r.x - x, r.z - z) < HOUSE_R * 2)) return false;
+  if (db.houses.some((h) => Math.hypot(h.x - x, h.z - z) < HOUSE_R * 2)) return false;
+  if (db.plots.some((p) => p.status !== 'rejected' && x > p.x1 - HOUSE_R && x < p.x2 + HOUSE_R && z > p.z1 - HOUSE_R && z < p.z2 + HOUSE_R)) return false;
+  return true;
+}
+function rectClear(x1, z1, x2, z2) { // joy ichida yo'l yo'qmi (har 3 m tekshiriladi)
+  if (!ROADS) return true;
+  for (let x = x1; x <= x2 + .01; x += 3) for (let z = z1; z <= z2 + .01; z += 3) if (roadClear(x, z) < .5) return false;
+  return roadClear(x2, z2) >= .5;
+}
+// Shahar chekkasidagi ko'chalar bo'ylab tartibli uchastkalar: har 34 m da, yo'l chetidan HOUSE_R+2 m, eshigi ko'chaga qaragan
+let lotQueue = null;
+function buildLots() {
+  const lots = [];
+  for (const s of ROADS.segs) {
+    if (!/^(residential|unclassified|tertiary|living_street|road)$/.test(s.t)) continue;
+    const mx = (s.ax + s.bx) / 2, mz = (s.az + s.bz) / 2, d = Math.hypot(mx, mz);
+    if (d < 1800 || d > 4500) continue;
+    const dx = s.bx - s.ax, dz = s.bz - s.az, L = Math.hypot(dx, dz), nx = -dz / L, nz = dx / L, off = s.hw + HOUSE_R + 2;
+    for (let t = 23; t < L - 23; t += 46) for (const side of [1, -1]) {
+      const x = s.ax + dx / L * t + nx * off * side, z = s.az + dz / L * t + nz * off * side;
+      lots.push({ x: Math.round(x), z: Math.round(z), rot: Math.atan2(-nx * side, -nz * side), street: s.n || '', d: Math.hypot(x, z), a: Math.atan2(z, x) });
+    }
+  }
+  lots.sort((a, b) => Math.round(a.d / 300) - Math.round(b.d / 300) || a.a - b.a); // markazga yaqin halqalardan, aylana bo'ylab
+  return lots;
+}
+function autoLot() {
+  if (!ROADS) return null;
+  lotQueue ||= buildLots();
+  while (lotQueue.length) { const l = lotQueue.shift(); if (spotFree(l.x, l.z)) return l; }
+  return null;
+}
+// Avval avtomatik qurilgan, lekin yo'lga tushib qolgan uylarni tartibli joyga ko'chirish
+function relocateBadAuto() {
+  let n = 0;
+  for (const r of db.residents) {
+    if (r.homeless || r.mahalla !== 'Shahar chekkasi' || (r.lot && roadClear(r.x, r.z) >= HOUSE_R)) continue; // hali ko'chmagan avto-uylar tartibli joyga
+    const l = autoLot(); if (!l) break;
+    Object.assign(r, { x: l.x, z: l.z, rot: l.rot, lot: true, street: r.street || l.street }); n++;
+  }
+  if (n) { save(); console.log(`${n} ta uy yo'ldan tartibli joyga ko'chirildi`); }
 }
 
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
@@ -326,7 +406,7 @@ const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid',
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), houses: db.houses.map(pubHouse), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, shop: db.settings.shop, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), houses: db.houses.map(pubHouse), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, roadsReady: !!ROADS, shop: db.settings.shop, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -423,7 +503,8 @@ async function api(req, res, url) {
     if (!r) return send(res, 403, { error: 'Avval kiring' });
     if (r.homeless) return send(res, 400, { error: "Uyingizni sotgansiz — ko'chish uchun avval joy sotib olib, uy quring" });
     if (!isFinite(b.x) || !isFinite(b.z)) return send(res, 400, { error: 'Joy tanlang' });
-    r.x = Math.round(b.x); r.z = Math.round(b.z);
+    if (!spotFree(+b.x, +b.z, r.username)) return send(res, 409, { error: roadClear(+b.x, +b.z) < HOUSE_R ? "Bu joy yo'lga juda yaqin — ko'cha chetidan biroz ichkariroq tanlang" : "Bu joy band — yonidagi bo'sh joyni tanlang" });
+    r.x = Math.round(b.x); r.z = Math.round(b.z); r.rot = isFinite(b.rot) ? +b.rot : 0;
     r.mahalla = String(b.mahalla || '').slice(0, 80); r.street = String(b.street || '').slice(0, 80);
     save();
     return send(res, 200, { ok: true, resident: pub(r) });
@@ -566,6 +647,8 @@ async function api(req, res, url) {
     if (area > 20000) return send(res, 400, { error: 'Joy juda katta (ko\'pi bilan 20 000 m²)' });
     const plot = { x1, x2, z1, z2 };
     if (overlaps(plot)) return send(res, 409, { error: 'Bu joy band — boshqa joy tanlang' });
+    if (!rectClear(x1, z1, x2, z2)) return send(res, 409, { error: "Joy yo'lga tushib qoldi — ko'chadan chetroqni tanlang" });
+    if (db.residents.some((q) => !q.homeless && q.x > x1 - HOUSE_R && q.x < x2 + HOUSE_R && q.z > z1 - HOUSE_R && q.z < z2 + HOUSE_R) || db.houses.some((h) => h.x > x1 - HOUSE_R && h.x < x2 + HOUSE_R && h.z > z1 - HOUSE_R && h.z < z2 + HOUSE_R)) return send(res, 409, { error: 'Bu joyda birovning uyi bor — boshqa joy tanlang' });
     Object.assign(plot, {
       id: id(), owner: r.username, area, sotix, price: Math.round(sotix * db.settings.pricePerSotix),
       type: TYPES.includes(b.type) ? b.type : 'boshqa', name: String(b.name || '').slice(0, 60) || r.username,
