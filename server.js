@@ -719,7 +719,8 @@ http.createServer(async (req, res) => {
     }
     let f = path.normalize(path.join(PUB, url.pathname === '/' ? 'index.html' : url.pathname === '/admin' ? 'admin.html' : url.pathname));
     if (!f.startsWith(PUB) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end('404'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
+    const ext = path.extname(f); // html/js/css har doim yangisi olinsin (eski kesh ko'rinmasin)
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': ['.html', '.js', '.css', '.json'].includes(ext) ? 'no-cache' : 'public, max-age=604800' });
     fs.createReadStream(f).pipe(res);
   } catch (e) { console.error(e); send(res, 500, { error: 'Server xatosi' }); }
 }).listen(PORT, () => console.log(`Shahrisabz Online: http://localhost:${PORT}  (admin: /admin)`));
