@@ -62,3 +62,5 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 
 .paycard{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:linear-gradient(135deg,#1d2b53,#2f4b9a);color:#fff;border-radius:14px;padding:12px 14px}
 .paycard .muted{color:#c9d4f5}.cnum{font-size:20px;font-weight:700;letter-spacing:2px;font-family:ui-monospace,monospace}
+
+.bpicks{max-height:240px;overflow:auto}

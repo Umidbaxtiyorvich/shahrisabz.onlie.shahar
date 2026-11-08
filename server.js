@@ -32,6 +32,23 @@ db.settings.shop ||= {
   build: 10000000, // sotib olingan joyga uy qurish narxi (tekin uy faqat birinchi uy)
 };
 db.settings.shop.build ??= 10000000;
+// Bino turlari katalogi (uy o'rniga yoki sotib olingan joyga): n — nomi, i — belgi, m — 3D model, p — narx
+db.settings.shop.buildings ||= {
+  dokon: { n: "Do'kon", i: '🛒', m: 'shop', p: 8000000 }, supermarket: { n: 'Supermarket', i: '🏬', m: 'market', p: 40000000 },
+  bozor: { n: 'Dehqon bozori', i: '🧺', m: 'bazaar', p: 60000000 }, kafe: { n: 'Kafe', i: '☕', m: 'cafe', p: 12000000 },
+  choyxona: { n: 'Choyxona', i: '🫖', m: 'chaikhana', p: 15000000 }, restoran: { n: 'Restoran', i: '🍽️', m: 'restaurant', p: 30000000 },
+  toyxona: { n: "To'yxona", i: '💒', m: 'wedding', p: 70000000 }, mehmonxona: { n: 'Mehmonxona', i: '🏨', m: 'hotel', p: 90000000 },
+  dorixona: { n: 'Dorixona', i: '💊', m: 'pharmacy', p: 10000000 }, shifoxona: { n: 'Shifoxona / klinika', i: '🏥', m: 'hospital', p: 120000000 },
+  maktab: { n: 'Maktab', i: '🏫', m: 'school', p: 80000000 }, bogcha: { n: "Bog'cha", i: '🧸', m: 'kinder', p: 50000000 },
+  bank: { n: 'Bank', i: '🏦', m: 'bank', p: 150000000 }, ofis: { n: 'Ofis markazi', i: '🏢', m: 'office', p: 100000000 },
+  hokimlik: { n: 'Hokimlik binosi', i: '🏛️', m: 'govt', p: 300000000 }, masjid: { n: 'Masjid', i: '🕌', m: 'mosque', p: 100000000 },
+  yoqilgi: { n: "Yoqilg'i quyish shoxobchasi", i: '⛽', m: 'gas', p: 60000000 }, avtosalon: { n: 'Avtosalon', i: '🚘', m: 'carshow', p: 80000000 },
+  sport: { n: 'Sport zal', i: '🏋️', m: 'gym', p: 35000000 }, stadion: { n: 'Stadion', i: '🏟️', m: 'stadium', p: 250000000 },
+  kinoteatr: { n: 'Kinoteatr', i: '🎬', m: 'cinema', p: 70000000 }, park: { n: "Park / bog'", i: '🌳', m: 'park', p: 20000000 },
+  zavod: { n: 'Zavod / sex', i: '🏭', m: 'factory', p: 120000000 }, ustaxona: { n: 'Avto ustaxona', i: '🔧', m: 'garage', p: 15000000 },
+};
+const MODELS = ['shop', 'market', 'bazaar', 'cafe', 'chaikhana', 'restaurant', 'wedding', 'hotel', 'pharmacy', 'hospital', 'school', 'kinder', 'bank', 'office', 'govt', 'mosque', 'gas', 'carshow', 'gym', 'stadium', 'cinema', 'park', 'factory', 'garage'];
+const stylePrice = (st) => { const sh = db.settings.shop; if (String(st).startsWith('b:')) { const bb = sh.buildings[st.slice(2)]; return bb ? bb.p : null; } return st in sh.houses ? sh.houses[st] : null; };
 db.dmQueue ||= [];
 db.settings.defaultPass ||= '2026';
 if (db.settings.defaultPass === 'shahrisabz2026') { // eski umumiy parol → 2026 (parolini almashtirmaganlar uchun ham)
@@ -77,8 +94,8 @@ function addFollower(username, source, pk) {
   return r;
 }
 
-const pub = (r) => ({ balance: r.balance || 0, rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
-const pubPlot = (p) => ({ built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
+const pub = (r) => ({ bname: r.bname || '', balance: r.balance || 0, rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pubPlot = (p) => ({ bname: p.bname || '', built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function body(req) {
@@ -304,7 +321,7 @@ function migrateCars(r) { // eski bitta mashina → mashinalar ro'yxati
   return r.cars;
 }
 
-const pubHouse = (h) => ({ rot: h.rot || 0, id: h.id, owner: h.owner, x: h.x, z: h.z, style: h.style || 'oddiy', colorHex: h.colorHex || null, color: h.color ?? 30, mahalla: h.mahalla || '', street: h.street || '', no: h.no || '', n: houseNumber(h) });
+const pubHouse = (h) => ({ bname: h.bname || '', rot: h.rot || 0, id: h.id, owner: h.owner, x: h.x, z: h.z, style: h.style || 'oddiy', colorHex: h.colorHex || null, color: h.color ?? 30, mahalla: h.mahalla || '', street: h.street || '', no: h.no || '', n: houseNumber(h) });
 // Egasining nechanchi uyi: asosiy uy = 1, keyingilari 2, 3 …
 function houseNumber(h) { const own = db.houses.filter((x) => x.owner === h.owner); const main = db.residents.find((r) => r.username === h.owner && !r.homeless) ? 1 : 0; return own.indexOf(h) + 1 + main; }
 function assetOf(r, kind, refId) {
@@ -639,7 +656,7 @@ async function api(req, res, url) {
     migrateCars(r);
     let cost = 0; const what = [];
     if (b.plotId && target.built === false) { if (!b.style) return send(res, 400, { error: 'Uy dizaynini tanlang' }); cost += shop.build; what.push('uy qurildi'); }
-    if (b.style && (b.style !== (target.style || 'oddiy') || (b.plotId && target.built === false))) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
+    if (b.style && (b.style !== (target.style || 'oddiy') || (b.plotId && target.built === false))) { if (stylePrice(b.style) === null) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += stylePrice(b.style); what.push('dizayn: ' + b.style); }
     if (b.color && HEX.test(b.color) && b.color !== target.colorHex && !what.length) { cost += shop.repaint; what.push("uy rangi"); }
     if (!b.plotId && !b.houseId && b.buyCar) {
       if (!(b.buyCar.t in shop.cars) || b.buyCar.t === 'yoq') return send(res, 400, { error: 'Mashina topilmadi' });
@@ -648,6 +665,7 @@ async function api(req, res, url) {
     }
     if (!b.plotId && b.recolorCar && r.cars[b.recolorCar.i] && HEX.test(b.recolorCar.c)) { cost += shop.repaint; what.push('mashina rangi'); }
     if (!b.plotId && Number.isInteger(b.removeCar) && r.cars[b.removeCar]) what.push('mashina olib tashlandi');
+    if (!what.length && b.bname !== undefined && String(b.bname) !== (target.bname || '')) what.push('nomi');
     if (!what.length) return send(res, 400, { error: "Hech narsa o'zgarmadi" });
     if ((r.balance || 0) < cost) return send(res, 402, { error: `Hamyonda pul yetarli emas. Kerak: ${cost.toLocaleString('ru-RU')} ${db.settings.currency}, bor: ${(r.balance || 0).toLocaleString('ru-RU')}` });
     r.balance = (r.balance || 0) - cost;
@@ -657,8 +675,8 @@ async function api(req, res, url) {
     if (!b.plotId && b.buyCar) r.cars.push({ t: b.buyCar.t, c: HEX.test(b.buyCar.c || '') ? b.buyCar.c.toLowerCase() : '#c0392b', price: shop.cars[b.buyCar.t], at: Date.now() });
     if (!b.plotId && b.recolorCar && r.cars[b.recolorCar.i] && HEX.test(b.recolorCar.c)) r.cars[b.recolorCar.i].c = b.recolorCar.c.toLowerCase();
     if (!b.plotId && Number.isInteger(b.removeCar) && r.cars[b.removeCar]) r.cars.splice(b.removeCar, 1);
-    if (b.style && !b.plotId) r.stylePrice = shop.houses[b.style] || 0;
-    if (b.style && b.plotId) target.stylePrice = shop.houses[b.style] || 0;
+    if (b.style) target.stylePrice = stylePrice(b.style) || 0;
+    if (b.bname !== undefined) target.bname = String(b.bname).slice(0, 40);
     if (cost) addTx(r, -cost, (b.plotId ? `"${target.name}": ` : 'Uy: ') + what.join(', '));
     save();
     return send(res, 200, { ok: true, balance: r.balance, cost });
@@ -801,6 +819,11 @@ async function api(req, res, url) {
       for (const k of ['houses', 'cars']) if (b[k]) for (const [n, v] of Object.entries(b[k])) { const nn = String(n).trim().toLowerCase().slice(0, 20); if (!nn) continue; if (v === null) delete sh[k][nn]; else if (Number(v) >= 0) sh[k][nn] = Math.round(Number(v)); }
       if (Number(b.repaint) >= 0) sh.repaint = Math.round(Number(b.repaint));
       if (Number(b.build) >= 0) sh.build = Math.round(Number(b.build));
+      if (b.buildings && typeof b.buildings === 'object') for (const [k, v] of Object.entries(b.buildings)) {
+        const key = String(k).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24); if (!key) continue;
+        if (v === null) { delete sh.buildings[key]; continue; }
+        const cur = sh.buildings[key] || {}; sh.buildings[key] = { n: String(v.n ?? cur.n ?? key).slice(0, 40), i: String(v.i ?? cur.i ?? '🏢').slice(0, 4), m: MODELS.includes(v.m) ? v.m : (cur.m || 'shop'), p: Number(v.p) >= 0 ? Math.round(Number(v.p)) : (cur.p || 0) };
+      }
       save(); return send(res, 200, { ok: true, shop: sh });
     }
     if (p === '/api/admin/place') { // {n, kind: 'mahalla'|'kocha', coords: "39.05, 66.82"} — o'chirish: {n, kind, remove:true}

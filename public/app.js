@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { makeBuildings } from './buildings.js?v=1';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -335,6 +336,12 @@ function proceduralCar(t, paint) {
   for (const z of [-.6, .6]) { const hl = new THREE.Mesh(new THREE.BoxGeometry(.1, .18, .35), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4cc, emissiveIntensity: 1 })); hl.position.set(prof[1][0] + .05, .75, z); g.add(hl); }
   return g;
 }
+const BUILD = makeBuildings({ THREE, box, M, GLASS, FRAME, WOOD, WALL, ROOF, BRICK, win, tree, lawn, proceduralCar });
+const bInfo = (st) => (String(st || '').startsWith('b:') ? (state.shop?.buildings || wallet.shop?.buildings || {})[st.slice(2)] : null);
+// Uy dizayni yoki bino turi bo'yicha chizish
+function buildStyle(g, st, c) { const b = bInfo(st); if (b) return (BUILD[b.m] || BUILD.shop)(g, c); return (HOUSE_BUILDERS[st] || HOUSE_BUILDERS.oddiy)(g, c); }
+const styleName = (st) => { const b = bInfo(st); return b ? `${b.i} ${b.n}` : (STYLE_NAMES[st] || '🏠 ' + (st || 'oddiy')); };
+const stylePriceC = (st, sh) => { const b = bInfo(st); return b ? b.p : (sh?.houses?.[st] || 0); };
 let ferrariP = null;
 function loadFerrari() {
   if (!ferrariP) ferrariP = new Promise((ok) => {
@@ -389,7 +396,8 @@ function avatarSprite(r) {
 const colorOf = (o, hueDefault) => o.colorHex ? new THREE.Color(o.colorHex) : hsl(o.color ?? hueDefault);
 function house(r, opts = {}) {
   const g = new THREE.Group();
-  const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
+  const top = buildStyle(g, r.style, colorOf(r, 20));
+  const bi = bInfo(r.style); if (bi) { const sg = label(`${bi.i} ${r.bname || bi.n}`, { size: 28, bg: 'rgba(29,43,83,.92)', fg: '#fff', scale: .85 }); sg.position.y = top + 5.5 + (bi.m === 'office' || bi.m === 'hotel' ? 0 : 0); sg.position.y = top - 1.5; sg.renderOrder = 12; g.add(sg); }
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 19.5; g.add(av);
   if (!opts.data) { const bl = label('💰 ' + money(r.balance || 0), { size: 26, bg: 'rgba(255,214,90,.95)', fg: '#3b2f00', scale: .75 }); bl.position.y = top + 27; bl.renderOrder = 12; g.add(bl); } // hamyondagi summa — rasm tepasida
@@ -424,7 +432,7 @@ function plotObj(p) {
     } else {
       const bw = Math.max(4, w * .75), bd = Math.max(4, d * .75);
       if (p.type === 'uy' || (p.style && p.style !== 'oddiy')) { // dizaynli bino: joy o'lchamiga moslab
-        const hg = new THREE.Group(); const t = (HOUSE_BUILDERS[p.style] || HOUSE_BUILDERS.oddiy)(hg, colorOf(p, 40));
+        const hg = new THREE.Group(); const t = buildStyle(hg, p.style, colorOf(p, 40));
         const sc = Math.max(.6, Math.min(bw / 24, bd / 18, 4)); hg.scale.setScalar(sc); hg.position.set(cx, 0, cz); g.add(hg);
         hg.traverse((o) => { if (o.isMesh) { o.userData = { kind: 'plot', p }; clickable.push(o); } });
         top = t * sc + 6;
@@ -439,7 +447,7 @@ function plotObj(p) {
     }
   }
   base.userData = { kind: 'plot', p }; clickable.push(base);
-  const l = label(`${TYPE_ICON[p.type] || ''} ${p.name}${p.status === 'pending' ? ' (kutilmoqda)' : p.built === false ? ' 🏗️ qurilmagan' : ''}`, { size: 26, bg: p.status === 'sold' ? 'rgba(255,255,255,.95)' : 'rgba(255,233,168,.95)', scale: 1 });
+  const l = label(`${bInfo(p.style)?.i || TYPE_ICON[p.type] || ''} ${p.bname || p.name}${p.status === 'pending' ? ' (kutilmoqda)' : p.built === false ? ' 🏗️ qurilmagan' : ''}`, { size: 26, bg: p.status === 'sold' ? 'rgba(255,255,255,.95)' : 'rgba(255,233,168,.95)', scale: 1 });
   l.position.set(cx, top, cz); g.add(l);
   return g;
 }
@@ -557,7 +565,7 @@ async function onClick(e) {
   } else if (hit?.object.userData.kind === 'xhouse') {
     const h = hit.object.userData.h;
     if (myRes() && h.owner === me.username) return openMyPanel();
-    return openAssetInfo({ owner: h.owner, kind: 'house', refId: h.id, title: `🏠 @${h.owner} ${h.n}-uyi`, addr: [h.mahalla, h.street, h.no && 'uy ' + h.no].filter(Boolean).join(', '), price: state.shop?.houses?.[h.style] || 0, x: h.x, z: h.z });
+    return openAssetInfo({ owner: h.owner, kind: 'house', refId: h.id, title: `🏠 @${h.owner} ${h.n}-uyi`, addr: [h.mahalla, h.street, h.no && 'uy ' + h.no].filter(Boolean).join(', '), price: stylePriceC(h.style, state.shop), x: h.x, z: h.z });
   } else if (hit?.object.userData.kind === 'plot') {
     const pl = hit.object.userData.p;
     modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.sotix} sotix (${pl.area} m²) · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? (pl.built === false ? '<button class="ok" id="pup">🏗️ Uy qurish</button>' : '<button id="pup">🎨 Dizaynni o\'zgartirish</button>') : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' + (pl.status === 'sold' ? '<button class="ok" id="pofr">💰 Sotib olish taklifi</button>' : '') : ''}<button class="ghost" id="nope">Yopish</button></div>`);
@@ -731,6 +739,8 @@ function openDesigner(plot) {
     const cars = plot ? [] : (r.cars || []);
     modal(`<h3>${unbuilt ? '🏗️ Uy qurish' : '🎨'} ${plot ? esc(plot.name || (isHouse ? plot.n + '-uy' : '')) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b>${unbuilt ? `<br>🏗️ Qurilish: <b>${money(sh.build)}</b> + tanlangan dizayn narxi` : ''}</div>
       <b>🏠 Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : v ? money(v) : (unbuilt ? '+0' : 'bepul')}</small></button>`).join('')}</div>
+      <b>🏪 Bino turlari</b> <span class="muted">(uyingizni yoki joyingizni do'kon, bozor, kafe… ga aylantiring)</span><div class="picks bpicks">${Object.entries(sh.buildings || {}).map(([k, v]) => `<button class="pick ${sel.style === 'b:' + k ? 'on' : ''}" data-s="b:${esc(k)}">${esc(v.i)} ${esc(v.n)}<small>${'b:' + k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : money(v.p)}</small></button>`).join('')}</div>
+      ${String(sel.style).startsWith('b:') ? `<label>Bino nomi (peshlavhada)<input id="bname" maxlength="40" value="${esc(cur.bname || '')}" placeholder="masalan: Umid market"></label>` : ''}
       <div class="row" style="align-items:center"><label class="clr">🎨 Rang <input type="color" id="hcol" value="${sel.color}"></label><span class="muted">rang o'zgartirish: ${money(sh.repaint)}</span></div>
       <button class="ok" id="dbuy">Saqlash</button>
       ${plot ? '' : `<hr><b>🚗 Mashinalarim (${cars.length})</b>
@@ -739,10 +749,11 @@ function openDesigner(plot) {
       <div class="row" style="align-items:center"><select id="ncar">${Object.entries(sh.cars).filter(([k]) => k !== 'yoq').map(([k, v]) => `<option value="${esc(k)}">${CAR_NAMES[k] || esc(k)} — ${money(v)}</option>`).join('')}</select><label class="clr">Rangi <input type="color" id="ncol" value="#c0392b"></label><button class="ok" id="nbuy">Sotib olish</button></div>
       <div class="muted">🏎️ Sport — haqiqiy 3D model (yaqinlashganda ko'rinadi). Uy oldiga 12 tagacha mashina sig'adi.</div>`}
       <button class="ghost" id="nope">Yopish</button>`);
-    document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { sel.style = b.dataset.s; sel.color = $('hcol').value; render(); }));
+    document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { const keep = $('bname')?.value; sel.style = b.dataset.s; sel.color = $('hcol').value; if (keep !== undefined) cur.bname = keep; render(); }));
     $('nope').onclick = closeModal;
     const go = async (body, msg) => { try { const j = await upgrade(body); toast(`${msg}${j.cost ? ' · −' + money(j.cost) : ''}`); render(); } catch (e) { alert(e.message); } };
-    $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value } : { plotId: plot?.id, style: sel.style, color: $('hcol').value }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
+    const bn = () => ($('bname') ? { bname: $('bname').value } : {});
+    $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value, ...bn() } : { plotId: plot?.id, style: sel.style, color: $('hcol').value, ...bn() }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
     if (!plot) {
       $('nbuy').onclick = () => go({ buyCar: { t: $('ncar').value, c: $('ncol').value } }, '🚗 Mashina uyingiz oldida!');
       document.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = () => go({ recolorCar: { i: +b.dataset.cr, c: document.querySelector(`[data-ci="${b.dataset.cr}"]`).value } }, '🎨 Rang o\'zgardi')));
@@ -755,15 +766,15 @@ function toast(t) { const d = document.createElement('div'); d.className = 'toas
 // Boshqa odamning uyi: manzil, narxlar, mashinalar, joylar, yozish
 function openHouseInfo(r) {
   const sh = state.shop || { houses: {}, cars: {} };
-  const housePrice = sh.houses[r.style || 'oddiy'] || 0;
+  const housePrice = stylePriceC(r.style || 'oddiy', sh);
   const cars = r.cars || [];
   const plots = state.plots.filter((p) => p.owner === r.username && p.status === 'sold');
-  const carsTotal = cars.reduce((a, c) => a + (sh.cars[c.t] || 0), 0), plotsTotal = plots.reduce((a, p) => a + (p.price || 0) + (sh.houses[p.style] || 0), 0);
+  const carsTotal = cars.reduce((a, c) => a + (sh.cars[c.t] || 0), 0), plotsTotal = plots.reduce((a, p) => a + (p.price || 0) + (p.built === false ? 0 : stylePriceC(p.style, sh)), 0);
   modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div>${distText(r.x, r.z) ? `<div class="dist">${distText(r.x, r.z)}</div>` : ''}</div></div>
     <div class="wallet">🏷️ Umumiy qiymati: <b>${money(housePrice + carsTotal + plotsTotal)}</b></div>
-    <table class="itbl"><tr><td>${STYLE_NAMES[r.style] || '🏠 ' + esc(r.style || 'oddiy')} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
+    <table class="itbl"><tr><td>${esc(styleName(r.style))}${r.bname ? ' «' + esc(r.bname) + '»' : ''} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
     ${cars.map((c) => `<tr><td>${CAR_NAMES[c.t] || esc(c.t)} <span class="sw" style="background:${esc(c.c)}"></span></td><td>${money(sh.cars[c.t] || 0)}</td></tr>`).join('')}
-    ${plots.map((p) => `<tr><td>📐 ${esc(p.name)} · ${p.sotix} sotix · ${STYLE_NAMES[p.style] || esc(p.style || '')}</td><td>${money((p.price || 0) + (sh.houses[p.style] || 0))}</td></tr>`).join('')}</table>
+    ${plots.map((p) => `<tr><td>📐 ${esc(p.bname || p.name)} · ${p.sotix} sotix · ${esc(p.built === false ? '🏗️ qurilmagan' : styleName(p.style))}</td><td>${money((p.price || 0) + (p.built === false ? 0 : stylePriceC(p.style, sh)))}</td></tr>`).join('')}</table>
     <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button><button class="ok" id="hofr">💰 Sotib olish taklifi</button>` : '<div class="hint">Yozishish va taklif uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
   $('nope').onclick = closeModal; $('hfly').onclick = () => { closeModal(); flyTo(r.x, r.z, 45); };
   if ($('hchat')) { $('hchat').onclick = () => openChat(r.username); $('hofr').onclick = () => openOffer({ owner: r.username, kind: 'main', refId: '', title: `@${r.username} ning uyi` }); }
