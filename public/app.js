@@ -502,12 +502,12 @@ async function onClick(e) {
     if (!n || n.d > 80) return status("Yo'lga yaqinroq joyni tanlang (80 m ichida)");
     const dx = n.s.bx - n.s.ax, dz = n.s.bz - n.s.az, L = Math.hypot(dx, dz) || 1;
     const side = ((p.x - n.px) * -dz / L + (p.z - n.pz) * dx / L) >= 0 ? 1 : -1;
-    const lot = lotOnRoad(n.s, p.x, p.z, side); if (!lot) return status("Bu ko'chada bo'sh joy yo'q — boshqa ko'chani tanlang");
+    const lot = lotOnRoad(n.s, p.x, p.z, side) || { x: p.x, z: p.z, rot: 0 }; // bo'sh joyni server ham o'zi topadi
     const { x, z, rot } = lot;
     const street = n.s.name || nearestStreetName(x, z), mahalla = nearestMahalla(x, z);
     modal(`<h3>Ko'chib o'tasizmi?</h3><div>📍 ${esc(mahalla || 'Noma\'lum mahalla')}${street ? ', ' + esc(street) : ''}</div><div class="row"><button class="ok" id="yes">Ha, ko'chaman</button><button class="ghost" id="nope">Yo'q</button></div>`);
     $('nope').onclick = closeModal;
-    $('yes').onclick = async () => { try { await api('/api/move', { ...me, x, z, rot, street, mahalla }); closeModal(); setMode('view'); await refresh(); flyTo(x, z); } catch (er) { alert(er.message); } };
+    $('yes').onclick = async () => { try { const j = await api('/api/move', { ...me, x, z, rot, street, mahalla }); closeModal(); setMode('view'); await refresh(); flyTo(j.resident.x, j.resident.z); if (Math.hypot(j.resident.x - x, j.resident.z - z) > 3) toast("↔️ Uy yo'lga tushmasligi uchun eng yaqin bo'sh joyga qo'yildi"); } catch (er) { alert(er.message); } };
     return;
   }
   if (mode === 'buy' && p) {
@@ -797,9 +797,9 @@ function openMove() {
     if (mp) cand.sort((a, b) => Math.hypot((a.ax + a.bx) / 2 - mp.x, (a.az + a.bz) / 2 - mp.z) - Math.hypot((b.ax + b.bx) / 2 - mp.x, (b.az + b.bz) / 2 - mp.z));
     // ko'cha bo'yidagi tartibli bo'sh uchastka
     for (const sg of cand.slice(0, 60)) {
-      const lot = lotOnRoad(sg, (sg.ax + sg.bx) / 2, (sg.az + sg.bz) / 2, 1); if (!lot) continue;
+      const lot = lotOnRoad(sg, (sg.ax + sg.bx) / 2, (sg.az + sg.bz) / 2, 1) || (sg === cand[0] ? { x: (sg.ax + sg.bx) / 2, z: (sg.az + sg.bz) / 2, rot: 0 } : null); if (!lot) continue;
       const { x, z, rot } = lot;
-      try { await api('/api/move', { ...me, x, z, rot, street: sg.name || nearestStreetName(x, z), mahalla: (mh && mp ? mp.name : '') || cpMah || mahallaAt(x, z) || nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(x, z); } catch (e) { alert(e.message); }
+      try { const j = await api('/api/move', { ...me, keepStreet: true, x, z, rot, street: sg.name || nearestStreetName(x, z), mahalla: (mh && mp ? mp.name : '') || cpMah || mahallaAt(x, z) || nearestMahalla(x, z) }); closeModal(); await refresh(); flyTo(j.resident.x, j.resident.z); } catch (e) { alert(e.message); }
       return;
     }
     alert("Bu ko'chada bo'sh joy qolmagan — xaritadan tanlang");

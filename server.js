@@ -362,6 +362,31 @@ function spotFree(x, z, exceptUser) {
   if (db.plots.some((p) => p.status !== 'rejected' && x > p.x1 - HOUSE_R && x < p.x2 + HOUSE_R && z > p.z1 - HOUSE_R && z < p.z2 + HOUSE_R)) return false;
   return true;
 }
+// Eng yaqin yo'l nuqtasi (uyni ko'chaga qaratish va ko'cha nomi uchun)
+function nearestRoadPt(x, z) {
+  if (!ROADS) return null; let best = null;
+  for (let R = 1; R <= 4 && !best; R++) { const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    for (let i = -R; i <= R; i++) for (let k = -R; k <= R; k++) for (const s of ROADS.grid.get((cx + i) + ',' + (cz + k)) || []) {
+      const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz, t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / L2)), px = s.ax + dx * t, pz = s.az + dz * t, d = Math.hypot(x - px, z - pz);
+      if (!best || d < best.d) best = { d, px, pz, s };
+    } }
+  return best;
+}
+// Belgilangan nuqtaga eng yaqin bo'sh joy (yo'lga ham, boshqa uyga ham tegmaydi) — spiral bo'ylab qidiradi
+function findFreeSpot(x, z, exceptUser) {
+  for (let r = 0; r <= 400; r += 4) for (let a = 0, n = Math.max(1, Math.ceil(2 * Math.PI * r / 4)); a < n; a++) {
+    const px = x + Math.cos(a / n * 2 * Math.PI) * r, pz = z + Math.sin(a / n * 2 * Math.PI) * r;
+    if (spotFree(px, pz, exceptUser)) { const nr = nearestRoadPt(px, pz); return { x: Math.round(px), z: Math.round(pz), rot: nr ? Math.atan2(nr.px - px, nr.pz - pz) : 0, street: nr?.s.n || '' }; }
+  }
+  return null;
+}
+function findFreeRect(x, z, half) {
+  const ok = (cx, cz) => rectClear(cx - half, cz - half, cx + half, cz + half) && !overlaps({ x1: cx - half, x2: cx + half, z1: cz - half, z2: cz + half }) && !db.residents.some((q) => !q.homeless && q.x > cx - half - HOUSE_R && q.x < cx + half + HOUSE_R && q.z > cz - half - HOUSE_R && q.z < cz + half + HOUSE_R) && !db.houses.some((h) => h.x > cx - half - HOUSE_R && h.x < cx + half + HOUSE_R && h.z > cz - half - HOUSE_R && h.z < cz + half + HOUSE_R);
+  for (let r = 0; r <= 400; r += 4) for (let a = 0, n = Math.max(1, Math.ceil(2 * Math.PI * r / 4)); a < n; a++) {
+    const px = x + Math.cos(a / n * 2 * Math.PI) * r, pz = z + Math.sin(a / n * 2 * Math.PI) * r; if (ok(px, pz)) return { x: px, z: pz };
+  }
+  return null;
+}
 function rectClear(x1, z1, x2, z2) { // joy ichida yo'l yo'qmi (har 3 m tekshiriladi)
   if (!ROADS) return true;
   for (let x = x1; x <= x2 + .01; x += 3) for (let z = z1; z <= z2 + .01; z += 3) if (roadClear(x, z) < .5) return false;
@@ -504,8 +529,13 @@ async function api(req, res, url) {
     if (r.homeless) return send(res, 400, { error: "Uyingizni sotgansiz — ko'chish uchun avval joy sotib olib, uy quring" });
     if (!isFinite(b.x) || !isFinite(b.z)) return send(res, 400, { error: 'Joy tanlang' });
     if (!ROADS) return send(res, 503, { error: "Shahrisabz xaritasi serverda hali tayyorlanmoqda — 1–2 daqiqadan keyin qayta urinib ko'ring" });
-    if (!spotFree(+b.x, +b.z, r.username)) return send(res, 409, { error: roadClear(+b.x, +b.z) < HOUSE_R ? "Bu joy yo'lga juda yaqin — ko'cha chetidan biroz ichkariroq tanlang" : "Bu joy band — yonidagi bo'sh joyni tanlang" });
-    r.x = Math.round(b.x); r.z = Math.round(b.z); r.rot = isFinite(b.rot) ? +b.rot : 0;
+    let spot = { x: Math.round(+b.x), z: Math.round(+b.z), rot: isFinite(b.rot) ? +b.rot : 0, street: '' };
+    if (!spotFree(spot.x, spot.z, r.username)) { // yo'lga yaqin yoki band — eng yaqin bo'sh joyga o'zi suriladi
+      spot = findFreeSpot(+b.x, +b.z, r.username);
+      if (!spot) return send(res, 409, { error: "Bu atrofda bo'sh joy topilmadi — boshqa joyni tanlang" });
+      if (spot.street && !b.keepStreet) b.street = spot.street;
+    }
+    r.x = spot.x; r.z = spot.z; r.rot = spot.rot;
     r.mahalla = String(b.mahalla || '').slice(0, 80); r.street = String(b.street || '').slice(0, 80);
     save();
     return send(res, 200, { ok: true, resident: pub(r) });
@@ -647,10 +677,11 @@ async function api(req, res, url) {
     if (area < 20) return send(res, 400, { error: 'Joy juda kichik (kamida 20 m²)' });
     if (area > 20000) return send(res, 400, { error: 'Joy juda katta (ko\'pi bilan 20 000 m²)' });
     const plot = { x1, x2, z1, z2 };
-    if (overlaps(plot)) return send(res, 409, { error: 'Bu joy band — boshqa joy tanlang' });
     if (!ROADS) return send(res, 503, { error: "Shahrisabz xaritasi serverda hali tayyorlanmoqda — 1–2 daqiqadan keyin qayta urinib ko'ring" });
-    if (!rectClear(x1, z1, x2, z2)) return send(res, 409, { error: "Joy yo'lga tushib qoldi — ko'chadan chetroqni tanlang" });
-    if (db.residents.some((q) => !q.homeless && q.x > x1 - HOUSE_R && q.x < x2 + HOUSE_R && q.z > z1 - HOUSE_R && q.z < z2 + HOUSE_R) || db.houses.some((h) => h.x > x1 - HOUSE_R && h.x < x2 + HOUSE_R && h.z > z1 - HOUSE_R && h.z < z2 + HOUSE_R)) return send(res, 409, { error: 'Bu joyda birovning uyi bor — boshqa joy tanlang' });
+    if (!rectClear(x1, z1, x2, z2) || overlaps(plot) || db.residents.some((q) => !q.homeless && q.x > x1 - HOUSE_R && q.x < x2 + HOUSE_R && q.z > z1 - HOUSE_R && q.z < z2 + HOUSE_R) || db.houses.some((h) => h.x > x1 - HOUSE_R && h.x < x2 + HOUSE_R && h.z > z1 - HOUSE_R && h.z < z2 + HOUSE_R)) { // yo'lga tushsa — o'zi chetga suriladi
+      const f = findFreeRect(+b.x, +b.z, half); if (!f) return send(res, 409, { error: "Bu atrofda yo'lga tegmaydigan bo'sh joy topilmadi — boshqa joyni tanlang" });
+      Object.assign(plot, { x1: f.x - half, x2: f.x + half, z1: f.z - half, z2: f.z + half });
+    }
     Object.assign(plot, {
       id: id(), owner: r.username, area, sotix, price: Math.round(sotix * db.settings.pricePerSotix),
       type: TYPES.includes(b.type) ? b.type : 'boshqa', name: String(b.name || '').slice(0, 60) || r.username,
