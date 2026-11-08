@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -21,9 +24,12 @@ const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } cat
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = false;
+
 $('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture; // shisha va mashina bo'yog'idagi aks
 scene.background = new THREE.Color(0xbfe3ff);
 scene.fog = new THREE.Fog(0xbfe3ff, 4000, 9000);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 20000);
@@ -32,9 +38,10 @@ const controls = new MapControls(camera, renderer.domElement);
 controls.maxPolarAngle = 1.35; controls.minDistance = 30; controls.maxDistance = 7000;
 controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0xd8cfa0, 2.2));
-const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(800, 1500, 600); scene.add(sun);
+const sun = new THREE.DirectionalLight(0xfff6e5, 2.2); sun.position.set(80, 150, 60); scene.add(sun); scene.add(sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 500 }); sun.shadow.bias = -.0005;
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0xf4efcc }));
-ground.rotation.x = -Math.PI / 2; scene.add(ground);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 // bulutlar
 for (let i = 0; i < 18; i++) {
   const c = new THREE.Group(), m = new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -186,63 +193,118 @@ const nearestMahalla = (x, z) => mahallaAt(x, z) || places.reduce((b, p) => { co
 const objects = new THREE.Group(); scene.add(objects);
 const clickable = [];
 const hsl = (h, s = .65, l = .62) => new THREE.Color().setHSL(h / 360, s, l);
-const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .7, metalness: .05, ...o });
-const GLASS = new THREE.MeshStandardMaterial({ color: 0x9fd3ff, roughness: .1, metalness: .6, emissive: 0x1b3a5c, emissiveIntensity: .25 });
-function box(g, w, h, d, mat, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y + h / 2, z); g.add(m); return m; }
-function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) box(g, (w / n) * .6, h, .3, GLASS, -w / 2 + (w / n) * (i + .5), y, z); }
+const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .55, metalness: .05, ...o });
+const GLASS = new THREE.MeshStandardMaterial({ color: 0x8fb8d8, roughness: .05, metalness: .9, envMapIntensity: 1.4 });
+const FRAME = M(0x2b2f36, { roughness: .4, metalness: .6 });
+const WOOD = M(0x9a6b43, { roughness: .8 });
+function box(g, w, h, d, mat, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y + h / 2, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; }
+// Ramkali deraza: shisha + qora ramka
+function win(g, w, h, x, y, z, rotY = 0) { const wg = new THREE.Group(); box(wg, w + .3, h + .3, .15, FRAME); box(wg, w, h, .2, GLASS); box(wg, .12, h, .25, FRAME); wg.position.set(x, y, z); wg.rotation.y = rotY; g.add(wg); return wg; }
+function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) win(g, (w / n) * .62, h, -w / 2 + (w / n) * (i + .5), y, z); }
+function railing(g, w, x, y, z) { box(g, w, 1, .1, new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: .35, roughness: .05, metalness: .3 }), x, y, z); box(g, w, .08, .14, FRAME, x, y + 1, z); }
+function tree(g, x, z, s = 1) { const t = new THREE.Mesh(new THREE.IcosahedronGeometry(2.2 * s, 1), M(0x3f9f4f, { roughness: .9, flatShading: true })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
+function lawn(g, w, d, z = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, .15, d), M(0x6cc06c, { roughness: 1 })); m.position.set(0, .07, z); m.receiveShadow = true; g.add(m); }
 // Uy dizaynlari: oddiy → zamonaviy → kottej → villa → minora
 const HOUSE_BUILDERS = {
   oddiy(g, c) {
-    box(g, 12, 8, 12, M(0xf2ead3));
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(10, 5, 4), M(c)); roof.position.y = 10.5; roof.rotation.y = Math.PI / 4; g.add(roof);
-    box(g, 2.6, 4.5, .4, M(0x8a5a2b), 0, 0, 6.05); windowsRow(g, 10, 4, 6.05, 2, 2.2);
-    return 15;
+    lawn(g, 22, 26, 3);
+    box(g, 12, 7, 11, M(0xf3ecdc));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(9.6, 4.5, 4), M(c, { roughness: .7 })); roof.position.y = 9.25; roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, .95); roof.castShadow = true; g.add(roof);
+    box(g, 2.2, 4, .3, WOOD, 0, 0, 5.6); win(g, 2.4, 2, -3.6, 3, 5.6); win(g, 2.4, 2, 3.6, 3, 5.6);
+    box(g, 4, .25, 3, M(0xcfc6b5), 0, 0, 7); tree(g, 8, 8, .8);
+    return 13;
   },
   zamonaviy(g, c) {
-    box(g, 16, 6, 12, M(0xf7f7f5)); box(g, 10, 5, 10, M(c), 3, 6, -1);
-    box(g, 16.6, .5, 12.6, M(0x2b2f36), 0, 6); box(g, 10.6, .5, 10.6, M(0x2b2f36), 3, 11);
-    box(g, 9, 3.6, .3, GLASS, -3, 1, 6.05); box(g, 7, 3, .3, GLASS, 3, 7, 4.05);
-    box(g, 3, 4.6, .3, M(0x3b2a1e), 5.5, 0, 6.05);
-    box(g, 18, .3, 6, M(0xd9d4c7), 0, 0, 9); // terrasa
-    return 15;
+    lawn(g, 30, 30, 3);
+    box(g, 17, 6, 12, M(0xf6f6f3)); box(g, 11, 5.2, 10, M(c, { roughness: .45 }), 3, 6, -1);
+    box(g, 18, .5, 13, M(0x2b2f36), 0, 6); box(g, 12, .5, 11, M(0x2b2f36), 3, 11.2);
+    box(g, 9, 4.6, .35, GLASS, -3.6, .6, 6.05); box(g, 9.3, .2, .45, FRAME, -3.6, 5.2, 6.05);
+    win(g, 7, 3.2, 3, 8.2, 4.1); railing(g, 7, 3, 6.5, 4.5);
+    for (let i = 0; i < 8; i++) box(g, .35, 5.6, .3, WOOD, 3.2 + i * .65, 0, 6.15); // yog'och panel
+    box(g, 3, 4.4, .3, M(0x3b2a1e), -1, 0, 6.1);
+    box(g, 20, .3, 6, M(0xd9d4c7), 0, 0, 9); tree(g, -12, 8); tree(g, 12, -6, .9);
+    return 14;
   },
   kottej(g, c) {
-    box(g, 16, 5, 13, M(0xefe6d6)); box(g, 16, 5, 13, M(0xe7dcc8), 0, 5);
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0, 12.5, 6, 4, 1), M(c)); roof.position.y = 13; roof.rotation.y = Math.PI / 4; roof.scale.set(1.05, 1, .85); g.add(roof);
-    windowsRow(g, 14, 1.2, 6.55, 3); windowsRow(g, 14, 6.2, 6.55, 4);
-    box(g, 10, .4, 3, M(0xffffff), 0, 5, 7.8); box(g, 10, 1, .2, M(0xffffff), 0, 5.4, 9.2); // balkon
-    box(g, 3, 4.2, .3, M(0x6b3e1f), 0, 0, 6.6); box(g, 2, 3, 2, M(0x9a8f80), 5, 13, 0); // mo'ri
-    return 19;
+    lawn(g, 30, 32, 3);
+    box(g, 16, 5, 13, M(0xefe6d6)); box(g, 16, 4.6, 13, M(0xe7dcc8), 0, 5);
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0, 12.4, 5.5, 4, 1), M(c, { roughness: .6 })); roof.position.y = 12.4; roof.rotation.y = Math.PI / 4; roof.scale.set(1.08, 1, .9); roof.castShadow = true; g.add(roof);
+    for (const x of [-5, 0, 5]) win(g, 2.6, 2.6, x, 1.2, 6.6); for (const x of [-5, -1.5, 2, 5.5]) win(g, 2.2, 2.4, x, 6, 6.6);
+    box(g, 10, .4, 3, M(0xffffff), 0, 5, 7.8); railing(g, 10, 0, 5.4, 9.2);
+    box(g, 2.6, 4.2, .3, WOOD, 0, 0, 6.7); box(g, 2, 3, 2, M(0x9a8f80), 5, 12, 0);
+    for (let x = -14; x <= 14; x += 2) box(g, .15, 1.2, .15, M(0xffffff), x, 0, 18); box(g, 28, .12, .12, M(0xffffff), 0, 1, 18);
+    tree(g, -11, 10); tree(g, 11, 11, 1.1);
+    return 17;
   },
   villa(g, c) {
-    box(g, 24, 6, 14, M(0xfbfaf7)); box(g, 14, 5, 12, M(0xfbfaf7), -5, 6, -1);
-    box(g, 25, .6, 15, M(c), 0, 6); box(g, 15, .6, 13, M(c), -5, 11);
-    box(g, 20, 4, .3, GLASS, 0, 1, 7.05); box(g, 12, 3.4, .3, GLASS, -5, 7, 5.05);
-    const pool = new THREE.Mesh(new THREE.BoxGeometry(12, .4, 6), new THREE.MeshStandardMaterial({ color: 0x35b6e8, roughness: .1, metalness: .3 })); pool.position.set(5, .25, 12); g.add(pool);
-    box(g, 14, .2, 8, M(0xe8e1d2), 5, 0, 12);
-    for (const x of [-11, 11]) { const t = new THREE.Mesh(new THREE.SphereGeometry(2.4, 10, 8), M(0x3fae55)); t.position.set(x, 3, 10); g.add(t); box(g, .6, 2, .6, M(0x7a5230), x, 0, 10); }
-    return 16;
+    lawn(g, 40, 38, 5);
+    box(g, 26, 6, 15, M(0xfbfaf7)); box(g, 15, 5.4, 12, M(0xfbfaf7), -5.5, 6, -1.5);
+    box(g, 27.5, .6, 16.5, M(c, { roughness: .4 }), 0, 6); box(g, 16.5, .6, 13.5, M(c, { roughness: .4 }), -5.5, 11.4);
+    box(g, 22, 4.8, .35, GLASS, 0, .6, 7.55); for (let x = -10; x <= 10; x += 4.4) box(g, .2, 4.8, .45, FRAME, x, .6, 7.55);
+    win(g, 12, 3.6, -5.5, 7.6, 4.55); railing(g, 14, -5.5, 6.6, 6.2);
+    const pool = new THREE.Mesh(new THREE.BoxGeometry(13, .3, 6.5), new THREE.MeshStandardMaterial({ color: 0x2fb6ea, roughness: .05, metalness: .2 })); pool.position.set(5, .32, 13.5); g.add(pool);
+    box(g, 15.5, .25, 9, M(0xe8e1d2), 5, 0, 13.5);
+    for (let i = 0; i < 3; i++) box(g, 1, .5, 2.2, M(0xffffff), -6 + i * 1.6, .25, 13.5);
+    for (const x of [-15, 15]) tree(g, x, 12, 1.2); tree(g, -16, -6); tree(g, 16, -6);
+    return 15;
   },
   minora(g, c) {
-    box(g, 14, 4, 14, M(0x2b2f36));
-    for (let f = 0; f < 10; f++) { box(g, 12, 3.6, 12, f % 2 ? GLASS : M(c, { metalness: .3, roughness: .3 }), 0, 4 + f * 3.8); box(g, 12.8, .3, 12.8, M(0xffffff), 0, 7.6 + f * 3.8); }
-    box(g, 2, 6, 2, M(0xdddddd), 0, 42);
-    return 52;
+    lawn(g, 30, 30, 3);
+    box(g, 16, 4.5, 16, M(0x2b2f36));
+    for (let f = 0; f < 12; f++) { box(g, 13.4, 3.4, 13.4, GLASS, 0, 4.5 + f * 3.8); box(g, 14.2, .4, 14.2, M(c, { roughness: .3, metalness: .4 }), 0, 7.9 + f * 3.8); }
+    for (const [x, z] of [[-6.8, -6.8], [6.8, -6.8], [-6.8, 6.8], [6.8, 6.8]]) box(g, .6, 46, .6, M(c, { roughness: .3, metalness: .4 }), x, 4.5, z);
+    box(g, 2, 7, 2, M(0xdddddd), 0, 50); tree(g, -12, 10); tree(g, 12, 10);
+    return 60;
   },
 };
-const CAR_BUILDERS = {
-  sedan: (g, m) => { box(g, 4.4, 1.2, 2, m, 0, .5); box(g, 2.4, .9, 1.8, GLASS, -.2, 1.7); },
-  jeep: (g, m) => { box(g, 4.6, 1.6, 2.2, m, 0, .6); box(g, 3, 1.2, 2, GLASS, -.4, 2.2); box(g, .8, .8, .3, M(0x222222), -2.3, 1, 0); },
-  sport: (g, m) => { box(g, 4.6, .9, 2.1, m, 0, .4); box(g, 1.8, .6, 1.7, GLASS, -.3, 1.3); box(g, .4, .5, 2.1, M(0x111111), 2.1, 1.3); },
-  limuzin: (g, m) => { box(g, 7.5, 1.2, 2.1, m, 0, .5); box(g, 5.4, .9, 1.9, GLASS, -.3, 1.7); },
+// ---- Mashinalar: sport — haqiqiy 3D model (Ferrari 458), boshqalari — profil bo'yicha chizilgan ----
+const CAR_PROFILES = { // yon profil [uzunlik bo'yicha x, balandlik y] (metr)
+  sedan: [[-2.3, .35], [2.3, .35], [2.35, .8], [1.6, 1], [.9, 1.45], [-.7, 1.5], [-1.6, 1.05], [-2.35, .95]],
+  jeep: [[-2.35, .45], [2.35, .45], [2.4, 1.15], [1.7, 1.3], [1.35, 2], [-2.2, 2.05], [-2.4, 1.3]],
+  limuzin: [[-3.6, .35], [3.6, .35], [3.65, .8], [2.8, 1], [2.1, 1.45], [-2.4, 1.5], [-3, 1.05], [-3.65, .95]],
+  sport: [[-2.2, .3], [2.25, .3], [2.3, .6], [1.2, .85], [.3, 1.2], [-.9, 1.2], [-2.25, .85]],
 };
-function car(type, hue) {
-  const g = new THREE.Group(), m = M(new THREE.Color().setHSL(hue / 360, .75, .45), { metalness: .6, roughness: .3 });
-  CAR_BUILDERS[type](g, m);
-  const len = type === 'limuzin' ? 2.8 : 1.5;
-  for (const x of [-len, len]) for (const z of [-1.05, 1.05]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .4, 12), M(0x111111)); w.rotation.x = Math.PI / 2; w.position.set(x, .5, z); g.add(w); }
+function proceduralCar(t, paint) {
+  const g = new THREE.Group(), prof = CAR_PROFILES[t] || CAR_PROFILES.sedan, w = t === 'jeep' ? 2.05 : 1.9;
+  const sh = new THREE.Shape(prof.map(([x, y]) => new THREE.Vector2(x, y)));
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: w - .3, bevelEnabled: true, bevelThickness: .15, bevelSize: .12, bevelSegments: 3 }), paint);
+  body.position.z = -(w - .3) / 2; body.castShadow = true; g.add(body);
+  const top = prof.filter(([, y]) => y > 1.1), xs = top.map(([x]) => x);
+  if (xs.length) { const gw = Math.max(...xs) - Math.min(...xs); const gl = new THREE.Mesh(new THREE.BoxGeometry(gw * .92, .42, w + .02), GLASS); gl.position.set((Math.max(...xs) + Math.min(...xs)) / 2, Math.min(...top.map(([, y]) => y)) - .28, 0); g.add(gl); }
+  const L = prof.reduce((a, [x]) => Math.max(a, Math.abs(x)), 0) - .75;
+  for (const x of [-L, L]) for (const z of [-w / 2, w / 2]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(.42, .42, .3, 18), M(0x15171a, { roughness: .8 })); wh.rotation.x = Math.PI / 2; wh.position.set(x, .42, z); g.add(wh); const rim = new THREE.Mesh(new THREE.CylinderGeometry(.25, .25, .32, 10), M(0xcfd3d8, { metalness: 1, roughness: .2 })); rim.rotation.x = Math.PI / 2; rim.position.set(x, .42, z); g.add(rim); }
+  for (const z of [-.6, .6]) { const hl = new THREE.Mesh(new THREE.BoxGeometry(.1, .18, .35), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4cc, emissiveIntensity: 1 })); hl.position.set(prof[1][0] + .05, .75, z); g.add(hl); }
   return g;
 }
+let ferrariP = null;
+function loadFerrari() {
+  if (!ferrariP) ferrariP = new Promise((ok) => {
+    const dl = new DRACOLoader(); dl.setDecoderPath('./vendor/addons/libs/draco/gltf/');
+    const ld = new GLTFLoader(); ld.setDRACOLoader(dl);
+    ld.load('./models/ferrari.glb', (gl) => ok(gl.scene.children[0]), undefined, () => ok(null));
+  });
+  return ferrariP;
+}
+const lodCars = [];
+function car(type, hex) {
+  const g = new THREE.Group(), color = new THREE.Color(hex || '#c0392b');
+  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: .9, roughness: .35, clearcoat: 1, clearcoatRoughness: .05 });
+  const simple = proceduralCar(type, paint); g.add(simple);
+  if (type === 'sport') { // yaqin kelganda haqiqiy model yuklanadi
+    g.userData.lod = { simple, real: null, loading: false, paint };
+    lodCars.push(g);
+  }
+  return g;
+}
+async function upgradeLod(g) {
+  const l = g.userData.lod; if (l.real || l.loading) return; l.loading = true;
+  const base = await loadFerrari(); if (!base) return;
+  const real = base.clone(true);
+  real.traverse((o) => { if (o.isMesh) { o.castShadow = true; if (o.material?.name === 'body' || o.name === 'body') o.material = l.paint; } });
+  const bodyObj = real.getObjectByName('body'); if (bodyObj) bodyObj.material = l.paint;
+  real.rotation.y = Math.PI / 2; real.userData = g.userData; l.real = real; g.add(real); real.visible = false;
+}
+const CAR_SLOTS = [[-11, 8, 0], [-11, 12, 0], [11, 12, 0], [-14, 4, Math.PI / 2], [14, 4, Math.PI / 2], [-6, 16, 0], [6, 16, 0], [0, 16, 0], [-14, -2, Math.PI / 2], [14, -2, Math.PI / 2], [-11, 16, 0], [11, 16, 0]];
 // Avatar: Instagram rasmi (bo'lmasa — bosh harf) dumaloq qilib
 const avatarCache = new Map();
 function avatarSprite(r) {
@@ -265,10 +327,11 @@ function avatarSprite(r) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.scale.set(9, 9, 1); sp.renderOrder = 11;
   return sp;
 }
+const colorOf = (o, hueDefault) => o.colorHex ? new THREE.Color(o.colorHex) : hsl(o.color ?? hueDefault);
 function house(r) {
   const g = new THREE.Group();
-  const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, hsl(r.color));
-  if (r.car && CAR_BUILDERS[r.car]) { const c = car(r.car, r.carColor || 0); c.position.set(-11, 0, 9); g.add(c); }
+  const top = (HOUSE_BUILDERS[r.style] || HOUSE_BUILDERS.oddiy)(g, colorOf(r, 20));
+  (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 9; g.add(av);
   const l = label('@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 2.5; g.add(l);
   g.position.set(r.x, 0, r.z);
@@ -294,7 +357,7 @@ function plotObj(p) {
     } else {
       const bw = Math.max(4, w * .75), bd = Math.max(4, d * .75);
       if (p.type === 'uy' || (p.style && p.style !== 'oddiy')) { // dizaynli bino: joy o'lchamiga moslab
-        const hg = new THREE.Group(); const t = (HOUSE_BUILDERS[p.style] || HOUSE_BUILDERS.oddiy)(hg, hsl(p.color ?? 40));
+        const hg = new THREE.Group(); const t = (HOUSE_BUILDERS[p.style] || HOUSE_BUILDERS.oddiy)(hg, colorOf(p, 40));
         const sc = Math.max(.6, Math.min(bw / 24, bd / 18, 4)); hg.scale.setScalar(sc); hg.position.set(cx, 0, cz); g.add(hg);
         hg.traverse((o) => { if (o.isMesh) { o.userData = { kind: 'plot', p }; clickable.push(o); } });
         top = t * sc + 6;
@@ -321,7 +384,7 @@ async function refresh() {
   state = await api('/api/state');
   clickable.length = 0;
   objects.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
-  objects.clear();
+  objects.clear(); lodCars.length = 0;
   state.residents.forEach((r) => objects.add(house(r)));
   state.plots.forEach((p) => objects.add(plotObj(p)));
   $('count').textContent = `${state.residents.length} ta uy`;
@@ -412,9 +475,7 @@ async function onClick(e) {
   if (hit?.object.userData.kind === 'house') {
     const r = hit.object.userData.r;
     if (myRes() && r.username === me.username) return openMyPanel();
-    if (myRes()) return openChat(r.username);
-    modal(`<div class="row" style="align-items:center"><img class="ava" src="/avatar/${encodeURIComponent(r.username)}" onerror="this.style.visibility='hidden'"><div><h3>@${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div></div></div><div class="hint">Uy egasi bilan yozishish uchun saytga kiring (pastda).</div><button class="ghost" id="nope">Yopish</button>`);
-    $('nope').onclick = closeModal;
+    return openHouseInfo(r);
   } else if (hit?.object.userData.kind === 'plot') {
     const pl = hit.object.userData.p;
     modal(`<h3>${TYPE_ICON[pl.type] || ''} ${esc(pl.name)}</h3><div>Egasi: <b>@${esc(pl.owner)}</b></div><div class="muted">${pl.sotix} sotix (${pl.area} m²) · ${esc(pl.type)} · ${pl.status === 'sold' ? 'sotilgan' : "to'lov kutilmoqda"}</div><div class="muted">${esc([pl.mahalla, pl.street].filter(Boolean).join(', '))}</div><div class="row">${myRes() && pl.owner === me.username && pl.status === 'sold' ? '<button id="pup">🎨 Dizaynni o\'zgartirish</button>' : ''}${myRes() && pl.owner !== me.username ? '<button id="pchat">💬 Egasiga yozish</button>' : ''}<button class="ghost" id="nope">Yopish</button></div>`);
@@ -447,7 +508,7 @@ $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key ==
 let wallet = { balance: 0, tx: [], shop: { houses: {}, cars: {}, repaint: 0 }, plots: [] };
 async function loadWallet() { if (!myRes()) return; try { wallet = await api('/api/me', me); $('bal').textContent = money(wallet.balance); } catch {} }
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
-const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport', limuzin: '🚘 Limuzin' };
+const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
 async function openMyPanel() {
   await loadWallet(); const r = myRes(); if (!r) return;
   modal(`<div class="row" style="align-items:center"><img class="ava" src="/avatar/${encodeURIComponent(r.username)}" onerror="this.style.visibility='hidden'"><div><h3>@${esc(r.username)}</h3><div class="muted">${esc([r.mahalla, r.street].filter(Boolean).join(', '))}</div></div></div>
@@ -459,29 +520,51 @@ async function openMyPanel() {
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
   document.querySelectorAll('.conv[data-i]').forEach((el) => (el.onclick = () => { const p = wallet.plots[el.dataset.i]; flyTo((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2); if (p.status === 'sold') openDesigner(p); }));
 }
+const hex = (o, d = '#e9d8b4') => o?.colorHex || (o?.color !== undefined ? '#' + hsl(o.color).getHexString() : d);
+async function upgrade(body) { const j = await api('/api/upgrade', { ...me, ...body }); await refresh(); await loadWallet(); return j; }
 function openDesigner(plot) {
   const r = myRes(), sh = wallet.shop, cur = plot || r;
-  let sel = { style: cur.style || 'oddiy', color: cur.color ?? 40, car: r.car || 'yoq', carColor: r.carColor || 0 };
-  const priceOf = () => { let c = 0; if (sel.style !== (cur.style || 'oddiy')) c += sh.houses[sel.style] || 0; if (!plot && sel.car !== (r.car || 'yoq')) c += sh.cars[sel.car] || 0; if (!c && (sel.color !== (cur.color ?? -1) || (!plot && sel.carColor !== (r.carColor ?? -1)))) c = sh.repaint; return c; };
+  let sel = { style: cur.style || 'oddiy', color: hex(cur) };
   const render = () => {
-    modal(`<h3>🎨 ${plot ? esc(plot.name) : 'Uyim'} — dizayn</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
-      <b>Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') ? 'hozirgi' : v ? money(v) : 'bepul'}</small></button>`).join('')}</div>
-      <label>Rang <input type="range" id="hue" min="0" max="360" value="${sel.color}"></label>
-      ${plot ? '' : `<b>Mashina</b><div class="picks">${Object.entries(sh.cars).map(([k, v]) => `<button class="pick ${sel.car === k ? 'on' : ''}" data-c="${esc(k)}">${CAR_NAMES[k] || esc(k)}<small>${k === (r.car || 'yoq') ? 'hozirgi' : v ? money(v) : 'bepul'}</small></button>`).join('')}</div>
-      <label>Mashina rangi <input type="range" id="chue" min="0" max="360" value="${sel.carColor}"></label>`}
-      <div>Narxi: <b id="cost">${money(priceOf())}</b></div>
-      <div class="row"><button class="ok" id="dbuy">Sotib olish va o'zgartirish</button><button class="ghost" id="nope">Yopish</button></div>`);
-    document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { sel.style = b.dataset.s; render(); }));
-    document.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { sel.car = b.dataset.c; render(); }));
-    $('hue').oninput = (e) => { sel.color = +e.target.value; $('cost').textContent = money(priceOf()); };
-    if ($('chue')) $('chue').oninput = (e) => { sel.carColor = +e.target.value; $('cost').textContent = money(priceOf()); };
+    const cars = plot ? [] : (r.cars || []);
+    modal(`<h3>🎨 ${plot ? esc(plot.name) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b></div>
+      <b>🏠 Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') ? '✓ hozirgi' : v ? money(v) : 'bepul'}</small></button>`).join('')}</div>
+      <div class="row" style="align-items:center"><label class="clr">🎨 Rang <input type="color" id="hcol" value="${sel.color}"></label><span class="muted">rang o'zgartirish: ${money(sh.repaint)}</span></div>
+      <button class="ok" id="dbuy">Saqlash</button>
+      ${plot ? '' : `<hr><b>🚗 Mashinalarim (${cars.length})</b>
+      ${cars.map((c, i) => `<div class="carrow"><span>${CAR_NAMES[c.t] || esc(c.t)}</span><input type="color" value="${esc(c.c)}" data-ci="${i}"><button class="ghost" data-cr="${i}">Rangni saqlash</button><button class="no" data-cx="${i}">✕</button></div>`).join('') || '<div class="muted">Hali mashina yo\'q</div>'}
+      <b>➕ Yangi mashina sotib olish</b>
+      <div class="row" style="align-items:center"><select id="ncar">${Object.entries(sh.cars).filter(([k]) => k !== 'yoq').map(([k, v]) => `<option value="${esc(k)}">${CAR_NAMES[k] || esc(k)} — ${money(v)}</option>`).join('')}</select><label class="clr">Rangi <input type="color" id="ncol" value="#c0392b"></label><button class="ok" id="nbuy">Sotib olish</button></div>
+      <div class="muted">🏎️ Sport — haqiqiy 3D model (yaqinlashganda ko'rinadi). Uy oldiga 12 tagacha mashina sig'adi.</div>`}
+      <button class="ghost" id="nope">Yopish</button>`);
+    document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { sel.style = b.dataset.s; sel.color = $('hcol').value; render(); }));
     $('nope').onclick = closeModal;
-    $('dbuy').onclick = async () => {
-      try { await api('/api/upgrade', { ...me, plotId: plot?.id, ...sel }); await refresh(); await loadWallet(); closeModal(); const p = plot ? [(plot.x1 + plot.x2) / 2, (plot.z1 + plot.z2) / 2] : [r.x, r.z]; flyTo(p[0], p[1], 90); }
-      catch (e) { alert(e.message); }
-    };
+    const go = async (body, msg) => { try { const j = await upgrade(body); toast(`${msg}${j.cost ? ' · −' + money(j.cost) : ''}`); render(); } catch (e) { alert(e.message); } };
+    $('dbuy').onclick = () => go({ plotId: plot?.id, style: sel.style, color: $('hcol').value }, '✅ Saqlandi');
+    if (!plot) {
+      $('nbuy').onclick = () => go({ buyCar: { t: $('ncar').value, c: $('ncol').value } }, '🚗 Mashina uyingiz oldida!');
+      document.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = () => go({ recolorCar: { i: +b.dataset.cr, c: document.querySelector(`[data-ci="${b.dataset.cr}"]`).value } }, '🎨 Rang o\'zgardi')));
+      document.querySelectorAll('[data-cx]').forEach((b) => (b.onclick = () => confirm('Bu mashinani olib tashlaysizmi? (pul qaytmaydi)') && go({ removeCar: +b.dataset.cx }, 'Olib tashlandi')));
+    }
   };
   render();
+}
+function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); }
+// Boshqa odamning uyi: manzil, narxlar, mashinalar, joylar, yozish
+function openHouseInfo(r) {
+  const sh = state.shop || { houses: {}, cars: {} };
+  const housePrice = sh.houses[r.style || 'oddiy'] || 0;
+  const cars = r.cars || [];
+  const plots = state.plots.filter((p) => p.owner === r.username && p.status === 'sold');
+  const carsTotal = cars.reduce((a, c) => a + (sh.cars[c.t] || 0), 0), plotsTotal = plots.reduce((a, p) => a + (p.price || 0) + (sh.houses[p.style] || 0), 0);
+  modal(`<div class="row" style="align-items:center;flex-wrap:nowrap">${ava(r.username, 'ava big')}<div><h3>@${esc(r.username)}</h3><div class="muted">📍 ${esc([r.mahalla, r.street].filter(Boolean).join(', ') || 'Shahar chekkasi')}</div></div></div>
+    <div class="wallet">🏷️ Umumiy qiymati: <b>${money(housePrice + carsTotal + plotsTotal)}</b></div>
+    <table class="itbl"><tr><td>${STYLE_NAMES[r.style] || '🏠 ' + esc(r.style || 'oddiy')} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
+    ${cars.map((c) => `<tr><td>${CAR_NAMES[c.t] || esc(c.t)} <span class="sw" style="background:${esc(c.c)}"></span></td><td>${money(sh.cars[c.t] || 0)}</td></tr>`).join('')}
+    ${plots.map((p) => `<tr><td>📐 ${esc(p.name)} · ${p.sotix} sotix · ${STYLE_NAMES[p.style] || esc(p.style || '')}</td><td>${money((p.price || 0) + (sh.houses[p.style] || 0))}</td></tr>`).join('')}</table>
+    <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button>` : '<div class="hint">Yozishish uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
+  $('nope').onclick = closeModal; $('hfly').onclick = () => { closeModal(); flyTo(r.x, r.z, 45); };
+  if ($('hchat')) $('hchat').onclick = () => openChat(r.username);
 }
 // ---- Ko'chish: xaritadan yoki manzil bo'yicha ----
 function openMove() {
@@ -596,6 +679,8 @@ let frame = 0;
 (function loop() {
   requestAnimationFrame(loop); controls.update();
   if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 1100 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; }
+  const t = controls.target; sun.position.set(t.x + 80, 150, t.z + 60); sun.target.position.copy(t);
+  if (frame % 20 === 0) { const wp = new THREE.Vector3(); for (const g of lodCars) { if (!g.parent) continue; g.getWorldPosition(wp); const near = wp.distanceTo(camera.position) < 260; const l = g.userData.lod; if (near) upgradeLod(g); if (l.real) { l.real.visible = near; l.simple.visible = !near; } } }
   renderer.render(scene, camera);
 })();
 

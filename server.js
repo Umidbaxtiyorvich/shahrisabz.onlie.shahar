@@ -65,8 +65,8 @@ function addFollower(username, source, pk) {
   return r;
 }
 
-const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', car: r.car || 'yoq', carColor: r.carColor ?? 0, avatar: !!r.avatar, claimed: !!r.lastLogin });
-const pubPlot = (p) => ({ sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
+const pub = (r) => ({ id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pubPlot = (p) => ({ colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function body(req) {
@@ -286,12 +286,18 @@ async function pollFollowerCount() {
 setInterval(() => pollFollowerCount().catch((e) => console.log('Followers:', e.message)), 5 * 60 * 1000);
 setTimeout(() => pollFollowerCount().catch(() => {}), 8000);
 
+const hueHex = (h) => { const f = (n) => { const k = (n + h / 30) % 12, a = 0.75 * Math.min(0.45, 0.55); return Math.round(255 * (0.45 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); };
+function migrateCars(r) { // eski bitta mashina → mashinalar ro'yxati
+  if (!r.cars) { r.cars = r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0), price: db.settings.shop.cars[r.car] || 0, at: Date.now() }] : []; delete r.car; }
+  return r.cars;
+}
+
 const TYPES = ['uy', "do'kon", 'kafe', 'ofis', 'mehmonxona', 'maktab', 'masjid', 'bog\'', 'zavod', 'boshqa'];
 
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m === 'GET' && p === '/api/state') {
-    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
+    return send(res, 200, { residents: db.residents.map(pub), plots: db.plots.filter((x) => x.status !== 'rejected').map(pubPlot), customPlaces: db.customPlaces, shop: db.settings.shop, settings: { pricePerSotix: db.settings.pricePerSotix, pricePerM2: db.settings.pricePerSotix / 100, currency: db.settings.currency }, types: TYPES });
   }
   // Instagram obuna: avtomatlashtirish (ManyChat / Make / Zapier) shu manzilga yuboradi
   if (m === 'POST' && p === '/api/follow') {
@@ -399,25 +405,34 @@ async function api(req, res, url) {
   }
   // Uy / mashina / joydagi binoni o'zgartirish — hamyondan to'lanadi
   if (m === 'POST' && p === '/api/upgrade') {
+    // body: { style?, color?: '#rrggbb', buyCar?: {t, c}, recolorCar?: {i, c}, removeCar?: i, plotId? }
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
-    const shop = db.settings.shop;
+    const shop = db.settings.shop, HEX = /^#[0-9a-f]{6}$/i;
     const target = b.plotId ? db.plots.find((x) => x.id === b.plotId && x.owner === r.username && x.status === 'sold') : r;
     if (!target) return send(res, 404, { error: 'Topilmadi' });
+    migrateCars(r);
     let cost = 0; const what = [];
-    const curStyle = target.style || 'oddiy';
-    if (b.style && b.style !== curStyle) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
-    if (!b.plotId && b.car && b.car !== (r.car || 'yoq')) { if (!(b.car in shop.cars)) return send(res, 400, { error: 'Mashina topilmadi' }); cost += shop.cars[b.car]; what.push('mashina: ' + b.car); }
-    const colorChanged = (b.color !== undefined && Number(b.color) !== (target.color ?? -1)) || (!b.plotId && b.carColor !== undefined && Number(b.carColor) !== (r.carColor ?? -1));
-    if (colorChanged && !what.length) { cost += shop.repaint; what.push("rang o'zgartirish"); }
+    if (b.style && b.style !== (target.style || 'oddiy')) { if (!(b.style in shop.houses)) return send(res, 400, { error: 'Dizayn topilmadi' }); cost += shop.houses[b.style]; what.push('dizayn: ' + b.style); }
+    if (b.color && HEX.test(b.color) && b.color !== target.colorHex && !what.length) { cost += shop.repaint; what.push("uy rangi"); }
+    if (!b.plotId && b.buyCar) {
+      if (!(b.buyCar.t in shop.cars) || b.buyCar.t === 'yoq') return send(res, 400, { error: 'Mashina topilmadi' });
+      if (r.cars.length >= 12) return send(res, 400, { error: "Uy oldiga ko'pi bilan 12 ta mashina sig'adi" });
+      cost += shop.cars[b.buyCar.t]; what.push('yangi mashina: ' + b.buyCar.t);
+    }
+    if (!b.plotId && b.recolorCar && r.cars[b.recolorCar.i] && HEX.test(b.recolorCar.c)) { cost += shop.repaint; what.push('mashina rangi'); }
+    if (!b.plotId && Number.isInteger(b.removeCar) && r.cars[b.removeCar]) what.push('mashina olib tashlandi');
     if (!what.length) return send(res, 400, { error: "Hech narsa o'zgarmadi" });
     if ((r.balance || 0) < cost) return send(res, 402, { error: `Hamyonda pul yetarli emas. Kerak: ${cost.toLocaleString('ru-RU')} ${db.settings.currency}, bor: ${(r.balance || 0).toLocaleString('ru-RU')}` });
     r.balance = (r.balance || 0) - cost;
     if (b.style) target.style = b.style;
-    if (b.color !== undefined) target.color = Math.max(0, Math.min(360, Number(b.color) || 0));
-    if (!b.plotId && b.car) r.car = b.car;
-    if (!b.plotId && b.carColor !== undefined) r.carColor = Math.max(0, Math.min(360, Number(b.carColor) || 0));
-    addTx(r, -cost, (b.plotId ? `"${target.name}": ` : 'Uy: ') + what.join(', '));
+    if (b.color && HEX.test(b.color)) target.colorHex = b.color.toLowerCase();
+    if (!b.plotId && b.buyCar) r.cars.push({ t: b.buyCar.t, c: HEX.test(b.buyCar.c || '') ? b.buyCar.c.toLowerCase() : '#c0392b', price: shop.cars[b.buyCar.t], at: Date.now() });
+    if (!b.plotId && b.recolorCar && r.cars[b.recolorCar.i] && HEX.test(b.recolorCar.c)) r.cars[b.recolorCar.i].c = b.recolorCar.c.toLowerCase();
+    if (!b.plotId && Number.isInteger(b.removeCar) && r.cars[b.removeCar]) r.cars.splice(b.removeCar, 1);
+    if (b.style && !b.plotId) r.stylePrice = shop.houses[b.style] || 0;
+    if (b.style && b.plotId) target.stylePrice = shop.houses[b.style] || 0;
+    if (cost) addTx(r, -cost, (b.plotId ? `"${target.name}": ` : 'Uy: ') + what.join(', '));
     save();
     return send(res, 200, { ok: true, balance: r.balance, cost });
   }
