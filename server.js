@@ -33,7 +33,12 @@ db.settings.shop ||= {
 };
 db.settings.shop.build ??= 10000000;
 db.dmQueue ||= [];
-db.settings.defaultPass ||= 'shahrisabz2026';
+db.settings.defaultPass ||= '2026';
+if (db.settings.defaultPass === 'shahrisabz2026') { // eski umumiy parol → 2026 (parolini almashtirmaganlar uchun ham)
+  db.settings.defaultPass = '2026';
+  const oldH = crypto.createHash('sha256').update('shs:shahrisabz2026').digest('hex');
+  for (const r of db.residents) if (r.mustChange || r.pass === oldH) { r.pass = crypto.createHash('sha256').update('shs:2026').digest('hex'); r.mustChange = true; }
+}
 db.settings.watcher ||= { sessionid: '', username: 'shahrisabz.online.shahar', pk: '', initialized: false, lastCheck: 0, lastError: '' };
 db.settings.instagram ||= { token: '', igUserId: '', verifyToken: '', username: '', lastSync: 0 };
 const IG_APP_ID = process.env.IG_APP_ID || '';
