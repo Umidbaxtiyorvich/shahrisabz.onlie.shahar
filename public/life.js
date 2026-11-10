@@ -1,7 +1,7 @@
 // Shahrisabz online shahar — "jonli shahar": haqiqiy vaqtga ko'ra kun/tun, haqiqiy ob-havo, ko'cha chiroqlari, harakatlanayotgan mashinalar.
 // Hamma narsa brauzerda chiziladi; ob-havo serverdan (/api/weather, Open-Meteo) olinadi.
 export function initLife(C) {
-  const { THREE, scene, sky, sun, hemi, renderer, camera, controls, ways, glass, $, mergeGeometries } = C;
+  const { THREE, scene, sky, sun, hemi, renderer, camera, controls, ways, glass, $, mergeGeometries, carParts } = C;
   const LAT = 39.0578 * Math.PI / 180;
   const state = { elev: 50, weather: null, night: 0, rainOn: false, snowOn: false, overrideHour: null };
 
@@ -82,7 +82,7 @@ export function initLife(C) {
 
   // ---- Harakatlanayotgan mashinalar ----
   const traffic = [];
-  let carMesh = null, cabMesh = null, wheelMesh = null;
+  let carMesh = null, cabMesh = null, wheelMesh = null, kGroups = null; const kRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
   function buildTraffic() {
     const roads = ways.filter((w) => /^(trunk|primary|secondary|tertiary|residential|unclassified)$/.test(w.t) && w.pts.length > 1).map((w) => {
       const seg = []; let tot = 0;
@@ -109,6 +109,12 @@ export function initLife(C) {
     }
     wheelMesh = new THREE.InstancedMesh(wheelG, new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: .8 }), N);
     carMesh.castShadow = true; scene.add(carMesh, cabMesh, wheelMesh);
+    if (carParts && carParts.length) { // Kenney mashinalari: har modelga instanced meshlar, mashinalar navbat bilan bo'linadi
+      carMesh.visible = cabMesh.visible = wheelMesh.visible = false;
+      kGroups = carParts.map((prts, k) => { const idx = traffic.map((_, i) => i).filter((i) => i % carParts.length === k);
+        const meshes = prts.map((pr) => { const im = new THREE.InstancedMesh(pr.geometry, pr.material, Math.max(1, idx.length)); im.castShadow = true; scene.add(im); return im; });
+        return { idx, meshes }; });
+    }
   }
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
   function moveTraffic(dt) {
@@ -121,9 +127,10 @@ export function initLife(C) {
       const ux = (bx - ax) / L, uz = (bz - az) / L, side = c.dir; // o'ng tomondan harakat
       pos.set(ax + (bx - ax) * t - uz * c.lane * side, 0, az + (bz - az) * t + ux * c.lane * side);
       q.setFromAxisAngle(up, Math.atan2(-uz * c.dir, ux * c.dir));
-      mtx.compose(pos, q, one); carMesh.setMatrixAt(i, mtx); cabMesh.setMatrixAt(i, mtx); wheelMesh.setMatrixAt(i, mtx);
+      mtx.compose(pos, q, one); carMesh.setMatrixAt(i, mtx); cabMesh.setMatrixAt(i, mtx); wheelMesh.setMatrixAt(i, mtx); c.m = c.m || new THREE.Matrix4(); c.m.compose(pos, q.multiply(kRot), one);
     });
     carMesh.instanceMatrix.needsUpdate = true; cabMesh.instanceMatrix.needsUpdate = true; wheelMesh.instanceMatrix.needsUpdate = true;
+    if (kGroups) for (const gp of kGroups) { gp.idx.forEach((ti, j) => { for (const im of gp.meshes) im.setMatrixAt(j, traffic[ti].m); }); for (const im of gp.meshes) im.instanceMatrix.needsUpdate = true; }
   }
 
   // ---- Yomg'ir / qor: kamera atrofida tushayotgan zarrachalar ----

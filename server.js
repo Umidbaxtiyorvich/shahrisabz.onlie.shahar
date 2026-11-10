@@ -64,6 +64,7 @@ for (const [k, v] of Object.entries({
   militsiya: { n: 'Profilaktika inspektori punkti', i: '👮', m: 'shop', p: 20000000 }, yongin: { n: "Yong'in xavfsizligi qismi", i: '🚒', m: 'garage', p: 80000000 },
   temiryol: { n: 'Temir yo\'l vokzali', i: '🚉', m: 'govt', p: 200000000 }, avtovokzal: { n: 'Avtovokzal', i: '🚌', m: 'carshow', p: 120000000 },
 })) db.settings.shop.buildings[k] ??= v;
+'abcdefghijklmnopqrstu'.split('').forEach((c, i) => { db.settings.shop.houses['uy_' + c] ??= 4000000 + i * 1500000; }); // Kenney uylari (21 ta)
 const MODELS = ['busstop', 'workshop', 'guesthouse', 'bakery', 'shop', 'market', 'bazaar', 'cafe', 'chaikhana', 'restaurant', 'wedding', 'hotel', 'pharmacy', 'hospital', 'school', 'kinder', 'bank', 'office', 'govt', 'mosque', 'gas', 'carshow', 'gym', 'stadium', 'cinema', 'park', 'factory', 'garage'];
 const stylePrice = (st) => { const sh = db.settings.shop; if (String(st).startsWith('b:')) { const bb = sh.buildings[st.slice(2)]; return bb ? bb.p : null; } return st in sh.houses ? sh.houses[st] : null; };
 db.dmQueue ||= [];
