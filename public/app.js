@@ -55,6 +55,9 @@ const TEX = {
   bark: canvasTex(64, (g, s) => { g.fillStyle = '#5b4330'; g.fillRect(0, 0, s, s); for (let x = 0; x < s; x += 3) { g.fillStyle = `rgba(30,20,10,${rnd(.1, .4)})`; g.fillRect(x, 0, 1.5, s); } }),
 };
 TEX.grass.repeat.set(1500, 1500);
+// Haqiqiy fotosurat teksturalari (ambientCG, CC0): yuklangach protsedural teksturalar o'rnini egallaydi
+const texLoader = new THREE.TextureLoader();
+function pbr(name, rx, ry = rx) { const load = (f, srgb) => { const t = texLoader.load(`./textures/pbr/${name}_${f}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = maxAniso; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; }; return { map: load('color', true), normalMap: load('normal', false) }; }
 // Osmon: fizik atmosfera modeli (quyosh, ufq, havo rangi)
 const sky = new Sky(); sky.scale.setScalar(30000); scene.add(sky);
 Object.assign(sky.material.uniforms, {}); sky.material.uniforms.turbidity.value = 6; sky.material.uniforms.rayleigh.value = 1.6; sky.material.uniforms.mieCoefficient.value = .004; sky.material.uniforms.mieDirectionalG.value = .85;
@@ -69,7 +72,7 @@ controls.enableDamping = true;
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b7a4a, 1.5); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.2); sun.position.copy(sunDir).multiplyScalar(200); let life = null; const allWays = []; scene.add(sun); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 500 }); sun.shadow.bias = -.0005;
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ map: TEX.grass, roughness: 1, color: 0xf2f5e6 }));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ ...pbr('grass', 3750), normalScale: new THREE.Vector2(.6, .6), roughness: 1, color: 0xd8f0b0 })); // 8 m plitka
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 // bulutlar
 for (let i = 0; i < 18; i++) {
@@ -187,8 +190,8 @@ function buildRoads(data) {
     }
   }
   const addMerged = (arr, mat, shadow) => { for (let i = 0; i < arr.length; i += 4000) { const m = new THREE.Mesh(mergeGeometries(arr.slice(i, i + 4000)), mat); m.receiveShadow = shadow; scene.add(m); } };
-  addMerged(walkGeo, new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: .95 }), true);
-  addMerged(geos, new THREE.MeshStandardMaterial({ map: TEX.asphalt, roughness: .9, color: 0xd0d0d0 }), true);
+  addMerged(walkGeo, new THREE.MeshStandardMaterial({ ...pbr('concrete', 1), roughness: .95, color: 0xf2efe8 }), true);
+  addMerged(geos, new THREE.MeshStandardMaterial({ ...pbr('asphalt', 1), roughness: .9, color: 0x9a9a9a }), true);
   addMerged(lineGeo, new THREE.MeshStandardMaterial({ map: TEX.dash, transparent: true, roughness: .6 }), false);
   addMerged(edgeGeo, new THREE.MeshStandardMaterial({ color: 0xf4f2ea, roughness: .6 }), false);
   // Chorrahalarda "zebra" piyoda o'tish joylari (3 va undan ko'p yo'l uchrashgan joyda)
@@ -290,7 +293,8 @@ const hsl = (h, s = .65, l = .62) => new THREE.Color().setHSL(h / 360, s, l);
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .55, metalness: .05, ...o });
 const WALL = (c) => new THREE.MeshStandardMaterial({ color: c, map: TEX.plaster, roughness: .9 });
 const ROOF = (c) => new THREE.MeshStandardMaterial({ color: c, map: TEX.tiles, roughness: .75 });
-const BRICK = () => new THREE.MeshStandardMaterial({ map: TEX.brick, roughness: .95 });
+const BRICKM = new THREE.MeshStandardMaterial({ ...pbr('bricks', 3), roughness: .95 });
+const BRICK = () => BRICKM;
 const GLASS = new THREE.MeshStandardMaterial({ color: 0x8fb8d8, roughness: .05, metalness: .9, envMapIntensity: 1.4 });
 const FRAME = M(0x2b2f36, { roughness: .4, metalness: .6 });
 const WOOD = M(0x9a6b43, { roughness: .8 });
@@ -300,7 +304,7 @@ function win(g, w, h, x, y, z, rotY = 0) { const wg = new THREE.Group(); box(wg,
 function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) win(g, (w / n) * .62, h, -w / 2 + (w / n) * (i + .5), y, z); }
 function railing(g, w, x, y, z) { box(g, w, 1, .1, new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: .35, roughness: .05, metalness: .3 }), x, y, z); box(g, w, .08, .14, FRAME, x, y + 1, z); }
 function tree(g, x, z, s = 1) { const t = new THREE.Mesh(new THREE.SphereGeometry(2.2 * s, 14, 10), M(new THREE.Color().setHSL(rnd(.25, .32), .55, rnd(.24, .32)), { roughness: .85 })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
-const LAWN = new THREE.MeshStandardMaterial({ map: (() => { const t = TEX.grass.clone(); t.repeat.set(4, 4); t.needsUpdate = true; return t; })(), roughness: 1 });
+const LAWN = new THREE.MeshStandardMaterial({ ...pbr('grass', 4), roughness: 1, color: 0xe0f5b8 });
 const GRILLE = new THREE.MeshStandardMaterial({ map: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#2f343b'; for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 2, s); }, 1), transparent: true, alphaTest: .3, side: THREE.DoubleSide });
 GRILLE.map.repeat.set(12, 1);
 const FENCE = new THREE.MeshStandardMaterial({ color: 0xf3f1ea, roughness: .7 }), BARS = new THREE.MeshStandardMaterial({ color: 0x3b4048, metalness: .6, roughness: .4 }), HEDGE = new THREE.MeshStandardMaterial({ color: 0x3f8f3a, roughness: .95 }), STONE = new THREE.MeshStandardMaterial({ color: 0xcfc8bb, roughness: .9 });
