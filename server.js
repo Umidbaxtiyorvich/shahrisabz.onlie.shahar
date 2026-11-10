@@ -268,7 +268,7 @@ async function loadBuildings() {
     }
   })().finally(() => { bldLoading = null; });
 }
-setTimeout(() => loadBuildings(), 30000); setInterval(() => loadBuildings(), 15 * 60 * 1000);
+// Egasiz haqiqiy binolar o'chirilgan (shaharda faqat aholining binolari): yuklanmaydi va joylashtirishga to'sqinlik qilmaydi
 setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().then((b) => b && buildRoads(b)).catch(() => {}); else if (!ROADS) buildRoads(fs.readFileSync(OSM_FILE)); }, 2 * 60 * 1000);
 
 async function igPost(pathq, payload) {

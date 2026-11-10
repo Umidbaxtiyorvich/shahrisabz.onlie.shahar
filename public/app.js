@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
 import { initLife } from './life.js?v=8';
-import * as K from './kenney.js?v=1';
+import * as K from './kenney.js?v=4';
 import { loadRealCity } from './realcity.js?v=1';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
@@ -242,6 +242,12 @@ function buildRoads(data) {
     crowns.setColorAt(i, col.setHSL(rnd(.26, .33), rnd(.55, .75), rnd(.26, .36))); });
   const kt = ['tree-oak', 'tree-default', 'tree-fat', 'tree-detailed'].map((n) => K.parts(n, 6.5)).filter(Boolean);
   if (kt.length) { // Kenney daraxtlari: har turi uchun alohida instanced mesh, joylar navbat bilan bo'linadi
+    const qt = ['q-tree-a', 'q-tree-b', 'q-tree-a', 'q-pine'].map((n) => K.parts(n, 7)).filter(Boolean);
+    spots.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
+    const nearSpots = qt.length ? spots.splice(0, 250) : []; // markaz atrofida — haqiqiyroq Quaternius daraxtlari
+    if (qt.length) { const qg = qt.map(() => []); nearSpots.forEach((sp, i) => qg[i % qt.length].push(sp));
+      qt.forEach((prts, k) => { const pts = qg[k]; if (!pts.length) return; for (const pr of prts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = true;
+        pts.forEach(([x, z], i) => { const sc2 = rnd(.9, 1.3); mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 2.399) % 6.28), sc.set(sc2, sc2, sc2)); im.setMatrixAt(i, mtx); }); scene.add(im); } }); }
     const groups = kt.map(() => []); spots.forEach((sp, i) => groups[i % kt.length].push(sp));
     kt.forEach((prts, k) => { const pts = groups[k]; if (!pts.length) return;
       for (const pr of prts) { const mt = pr.material.clone(); const hs = {}; mt.color.getHSL(hs); mt.metalness = 0; mt.roughness = .9; mt.envMapIntensity = .3;
@@ -303,7 +309,7 @@ function box(g, w, h, d, mat, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(ne
 function win(g, w, h, x, y, z, rotY = 0) { const wg = new THREE.Group(); box(wg, w + .3, h + .3, .15, FRAME); box(wg, w, h, .2, GLASS); box(wg, .12, h, .25, FRAME); wg.position.set(x, y, z); wg.rotation.y = rotY; g.add(wg); return wg; }
 function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) win(g, (w / n) * .62, h, -w / 2 + (w / n) * (i + .5), y, z); }
 function railing(g, w, x, y, z) { box(g, w, 1, .1, new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: .35, roughness: .05, metalness: .3 }), x, y, z); box(g, w, .08, .14, FRAME, x, y + 1, z); }
-function tree(g, x, z, s = 1) { const t = new THREE.Mesh(new THREE.SphereGeometry(2.2 * s, 14, 10), M(new THREE.Color().setHSL(rnd(.25, .32), .55, rnd(.24, .32)), { roughness: .85 })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
+function tree(g, x, z, s = 1) { const qn = ['q-tree-a', 'q-tree-b', 'q-bush'][Math.abs(Math.round(x * 7 + z * 3)) % 3]; if (K.has(qn)) { const m = K.place(qn, (qn === 'q-bush' ? 3 : 6) * s); m.position.set(x, 0, z); g.add(m); return; } const t = new THREE.Mesh(new THREE.SphereGeometry(2.2 * s, 14, 10), M(new THREE.Color().setHSL(rnd(.25, .32), .55, rnd(.24, .32)), { roughness: .85 })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
 const LAWN = new THREE.MeshStandardMaterial({ ...pbr('grass', 4), roughness: 1, color: 0xe0f5b8 });
 const GRILLE = new THREE.MeshStandardMaterial({ map: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#2f343b'; for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 2, s); }, 1), transparent: true, alphaTest: .3, side: THREE.DoubleSide });
 GRILLE.map.repeat.set(12, 1);
@@ -989,7 +995,7 @@ let frame = 0;
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
   life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean) });
-  loadRealCity({ scene, toXZ, glassMat: GLASS }).then((rc) => { if (rc) { realCity = rc; } }); // Shahrisabzning haqiqiy binolari (OSM)
+  // Egasiz (OSM) haqiqiy binolar o'chirilgan: shaharda faqat obunachilarning uylari va sotib olingan binolar turadi
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
