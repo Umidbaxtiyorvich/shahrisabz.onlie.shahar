@@ -215,7 +215,7 @@ const POI_ICON = (t) => {
   if (cr) return ['🛠️', 'Ustaxona']; if (o) return ['🏢', 'Idora'];
   return ['📍', 'Joy'];
 };
-let poiLoading = null;
+let poiLoading = null, weather = null;
 async function loadPois() {
   if (fs.existsSync(POI_FILE) || poiLoading) return;
   poiLoading = (async () => {
@@ -954,6 +954,15 @@ http.createServer(async (req, res) => {
       const f = r && (await avatarFile(r));
       if (!f) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(f).pipe(res);
+    }
+    if (url.pathname === '/api/weather') { // Shahrisabzning hozirgi ob-havosi (Open-Meteo, bepul, kalitsiz) — 15 daqiqa keshlanadi
+      if (!weather || Date.now() - weather.at > 15 * 60 * 1000) {
+        try {
+          const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=39.0578&longitude=66.8297&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,precipitation,is_day&timezone=Asia%2FTashkent', { signal: AbortSignal.timeout(10000) });
+          const j = await r.json(); if (j.current) weather = { at: Date.now(), ...j.current };
+        } catch (e) { console.log('Ob-havo:', e.message); }
+      }
+      return send(res, 200, weather || { error: "Ob-havo hozircha yo'q" });
     }
     if (url.pathname === '/pois.json') { // OSM joylari + admin qo'lda kiritgan joylar
       let osm = []; try { osm = JSON.parse(fs.readFileSync(POI_FILE, 'utf8')).joylar; } catch {}

@@ -6,6 +6,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
+import { initLife } from './life.js?v=4';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -62,8 +63,8 @@ camera.position.set(0, 1400, 1500);
 const controls = new MapControls(camera, renderer.domElement);
 controls.maxPolarAngle = 1.35; controls.minDistance = 30; controls.maxDistance = 7000;
 controls.enableDamping = true;
-scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b7a4a, 1.5));
-const sun = new THREE.DirectionalLight(0xfff1dc, 3.2); sun.position.copy(sunDir).multiplyScalar(200); scene.add(sun); scene.add(sun.target);
+const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b7a4a, 1.5); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 3.2); sun.position.copy(sunDir).multiplyScalar(200); let life = null; const allWays = []; scene.add(sun); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 500 }); sun.shadow.bias = -.0005;
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ map: TEX.grass, roughness: 1, color: 0xd8dccb }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
@@ -167,7 +168,7 @@ function buildRoads(data) {
   const named = new Map();
   for (const w of data.ways) {
     const pts = w.xz || w.g.map(([la, lo]) => toXZ(la, lo));
-    const wd = WIDTH[w.t] || 6;
+    const wd = WIDTH[w.t] || 6; allWays.push({ t: w.t, pts, wd });
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
       const len = Math.hypot(bx - ax, bz - az); if (len < .1) continue;
@@ -903,7 +904,7 @@ let frame = 0;
 (function loop() {
   requestAnimationFrame(loop); controls.update();
   if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 1100 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; for (const l of poiLabels) l.visible = h < 700 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.6; }
-  const t = controls.target; sun.position.set(t.x + sunDir.x * 200, sunDir.y * 200, t.z + sunDir.z * 200); sun.target.position.copy(t);
+  const t = controls.target; const sd = sky.material.uniforms.sunPosition.value; sun.position.set(t.x + sd.x * 200, Math.max(20, sd.y * 200), t.z + sd.z * 200); if (life) life.tick(); sun.target.position.copy(t);
   if (frame % 20 === 0) { const wp = new THREE.Vector3(); for (const g of lodCars) { if (!g.parent) continue; g.getWorldPosition(wp); const near = wp.distanceTo(camera.position) < 260; const l = g.userData.lod; if (near) upgradeLod(g); if (l.real) { l.real.visible = near; l.simple.visible = !near; } } }
   renderer.render(scene, camera);
 })();
@@ -921,5 +922,8 @@ let frame = 0;
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
+  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $ });
+  const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
+  if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
 })();

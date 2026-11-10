@@ -64,3 +64,5 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 .paycard .muted{color:#c9d4f5}.cnum{font-size:20px;font-weight:700;letter-spacing:2px;font-family:ui-monospace,monospace}
 
 .bpicks{max-height:240px;overflow:auto}
+
+.wclock{font-size:13px;margin-top:4px;color:#1d2b53}
