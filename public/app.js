@@ -6,8 +6,9 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=7';
+import { initLife } from './life.js?v=8';
 import * as K from './kenney.js?v=1';
+import { loadRealCity } from './realcity.js?v=1';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -97,7 +98,7 @@ const WIDTH = { motorway: 20, trunk: 18, primary: 16, secondary: 13, tertiary: 1
 let segments = []; // {ax,az,bx,bz,name}
 let places = []; // {name,x,z}
 const streetLabels = [], placeLabels = [];
-let streetNames = [], officialPlaces = [];
+let streetNames = [], officialPlaces = [], realCity = null;
 // Mahalla chegaralari: [x,z] ko'pburchaklar
 let mahallaPolys = [], officialStreets = [];
 // Nomlarni solishtirish: x/h, o'/u, apostroflar farqini e'tiborsiz qoldiradi
@@ -964,7 +965,7 @@ let frame = 0;
   if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 600 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; for (const l of poiLabels) l.visible = h < 450 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.6;
     // uy yozuvlari: uzoqdan ko'rinmaydi (rasm toza turadi), yaqinda nik, juda yaqinda balans va manzil
     for (const g of houseLabelGroups) { const d = Math.hypot(g.position.x - camera.position.x, g.position.z - camera.position.z) + h; for (const c of g.children) if (c.isSprite && c.userData.lod) c.visible = c.userData.lod === 1 ? d < 420 : d < 190; } }
-  const t = controls.target; const sd = sky.material.uniforms.sunPosition.value; sun.position.set(t.x + sd.x * 200, Math.max(20, sd.y * 200), t.z + sd.z * 200); if (life) life.tick(); sun.target.position.copy(t);
+  const t = controls.target; const sd = sky.material.uniforms.sunPosition.value; sun.position.set(t.x + sd.x * 200, Math.max(20, sd.y * 200), t.z + sd.z * 200); if (life) { life.tick(); if (realCity && frame % 60 === 0) realCity.setNight(life.night ? life.night() : 0); } sun.target.position.copy(t);
   if (frame % 20 === 0) { const wp = new THREE.Vector3(); for (const g of lodCars) { if (!g.parent) continue; g.getWorldPosition(wp); const near = wp.distanceTo(camera.position) < 260; const l = g.userData.lod; if (near) upgradeLod(g); if (l.real) { l.real.visible = near; l.simple.visible = !near; } } }
   renderer.render(scene, camera);
 })();
@@ -984,6 +985,7 @@ let frame = 0;
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
   life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean) });
+  loadRealCity({ scene, toXZ, glassMat: GLASS }).then((rc) => { if (rc) { realCity = rc; } }); // Shahrisabzning haqiqiy binolari (OSM)
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);

@@ -172,6 +172,7 @@ export function initLife(C) {
       moveTraffic(dt); movePrecip(dt);
       if (state.glowMat) state.glowMat.opacity = state.night * .35;
     },
+    night: () => state.night,
     setHour(h) { state.overrideHour = h; updateSun(); renderClock(); }, // sinov uchun
     setWeather(code, temp = 12, cloud = 80) { state.weather = { weather_code: code, temperature_2m: temp, cloud_cover: cloud, wind_speed_10m: 3 }; const c = code; state.rainOn = (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95; state.snowOn = (c >= 71 && c <= 77) || c === 85 || c === 86; precip.visible = state.rainOn || state.snowOn; pMat.size = state.snowOn ? 1.8 : 1; pMat.color.setHex(state.snowOn ? 0xffffff : 0xaecbe8); updateSun(); renderClock(); },
   };

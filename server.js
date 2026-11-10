@@ -233,6 +233,42 @@ async function loadPois() {
   })().finally(() => { poiLoading = null; });
 }
 setTimeout(() => loadPois(), 20000); setInterval(() => loadPois(), 15 * 60 * 1000);
+// ---- Shahrisabzning haqiqiy binolari (OSM building=*): shakli, qavatlar, balandlik — faqat bezak, sotilmaydi ----
+const BLD_FILE = path.join(__dirname, 'data', 'buildings-v1.json');
+let bldLoading = null, BLDG = null; // BLDG — bino markazlari panjarasi (uylar ustiga tushmasligi uchun)
+function indexBuildings(buf) {
+  try {
+    const j = JSON.parse(buf), grid = new Map(); let n = 0;
+    for (const b of j.b) { const pts = b.g.map(([la, lo]) => toXZ(la, lo)); let cx = 0, cz = 0; for (const [x, z] of pts) { cx += x; cz += z; } cx /= pts.length; cz /= pts.length;
+      const r = Math.max(...pts.map(([x, z]) => Math.hypot(x - cx, z - cz))); const k = Math.floor(cx / CELL) + ',' + Math.floor(cz / CELL); if (!grid.has(k)) grid.set(k, []); grid.get(k).push({ cx, cz, r }); n++; }
+    BLDG = grid; console.log(`Binolar indeksi: ${n} ta`); if (ROADS) relocateBadAuto(); // bino ustida qolgan avto-uylar ko'chiriladi
+  } catch (e) { console.log('Bino indeksi xato:', e.message); }
+}
+function nearBuilding(x, z, pad) {
+  if (!BLDG) return false; const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+  for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) for (const b of BLDG.get((cx + i) + ',' + (cz + k)) || []) if (Math.hypot(b.cx - x, b.cz - z) < b.r + pad) return true;
+  return false;
+}
+async function loadBuildings() {
+  if (fs.existsSync(BLD_FILE)) { if (!BLDG) indexBuildings(fs.readFileSync(BLD_FILE)); return; }
+  if (bldLoading) return;
+  bldLoading = (async () => {
+    const q = `[out:json][timeout:180];way["building"](${CITY_BBOX});out geom tags;`;
+    for (const u of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter']) {
+      try {
+        const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'shahrisabz-online-shahar' }, signal: AbortSignal.timeout(200000) });
+        if (!r.ok) continue; const j = await r.json(); const out = [];
+        for (const e of j.elements) { if (!e.geometry || e.geometry.length < 4) continue; const t = e.tags || {};
+          const lv = parseFloat(t['building:levels']) || 0, h = parseFloat(t.height) || 0;
+          out.push({ g: e.geometry.slice(0, -1).map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]), t: t.building, ...(lv ? { lv } : {}), ...(h ? { h } : {}), ...(t.name ? { n: t['name:uz'] || t.name } : {}), ...(t['roof:shape'] ? { rs: t['roof:shape'] } : {}) }); }
+        if (!out.length) continue;
+        const buf = Buffer.from(JSON.stringify({ manba: '© OpenStreetMap hissadorlari (ODbL)', b: out }));
+        fs.mkdirSync(path.dirname(BLD_FILE), { recursive: true }); fs.writeFileSync(BLD_FILE, buf); console.log(`Binolar saqlandi: ${out.length} ta`); indexBuildings(buf); return;
+      } catch (e) { console.log('Binolar xato', e.message); }
+    }
+  })().finally(() => { bldLoading = null; });
+}
+setTimeout(() => loadBuildings(), 30000); setInterval(() => loadBuildings(), 15 * 60 * 1000);
 setInterval(() => { if (!fs.existsSync(OSM_FILE)) getOsm().then((b) => b && buildRoads(b)).catch(() => {}); else if (!ROADS) buildRoads(fs.readFileSync(OSM_FILE)); }, 2 * 60 * 1000);
 
 async function igPost(pathq, payload) {
@@ -427,6 +463,7 @@ function roadClear(x, z) {
 const HOUSE_R = 23; // uy hovlisi radiusi (m): eng katta dizayn (villa) hovlisi bilan
 function spotFree(x, z, exceptUser) {
   if (roadClear(x, z) < HOUSE_R) return false;
+  if (nearBuilding(x, z, HOUSE_R * .8)) return false; // haqiqiy bino ustiga tushmasin
   if (db.residents.some((r) => !r.homeless && r.username !== exceptUser && Math.hypot(r.x - x, r.z - z) < HOUSE_R * 2)) return false;
   if (db.houses.some((h) => Math.hypot(h.x - x, h.z - z) < HOUSE_R * 2)) return false;
   if (db.plots.some((p) => p.status !== 'rejected' && x > p.x1 - HOUSE_R && x < p.x2 + HOUSE_R && z > p.z1 - HOUSE_R && z < p.z2 + HOUSE_R)) return false;
@@ -460,6 +497,7 @@ function findFreeRect(x, z, half) {
 function rectClear(x1, z1, x2, z2) { // joy ichida yo'l yo'qmi (har 3 m tekshiriladi)
   if (!ROADS) return true;
   for (let x = x1; x <= x2 + .01; x += 3) for (let z = z1; z <= z2 + .01; z += 3) if (roadClear(x, z) < .5) return false;
+  if (nearBuilding((x1 + x2) / 2, (z1 + z2) / 2, Math.hypot(x2 - x1, z2 - z1) / 2)) return false;
   return roadClear(x2, z2) >= .5;
 }
 // Shahar chekkasidagi ko'chalar bo'ylab tartibli uchastkalar: har 34 m da, yo'l chetidan HOUSE_R+2 m, eshigi ko'chaga qaragan
@@ -489,7 +527,7 @@ function autoLot() {
 function relocateBadAuto() {
   let n = 0;
   for (const r of db.residents) {
-    if (r.homeless || r.mahalla !== 'Shahar chekkasi' || (r.lot && roadClear(r.x, r.z) >= HOUSE_R)) continue; // hali ko'chmagan avto-uylar tartibli joyga
+    if (r.homeless || r.mahalla !== 'Shahar chekkasi' || (r.lot && roadClear(r.x, r.z) >= HOUSE_R && !nearBuilding(r.x, r.z, HOUSE_R * .8))) continue; // hali ko'chmagan avto-uylar tartibli joyga
     const l = autoLot(); if (!l) break;
     Object.assign(r, { x: l.x, z: l.z, rot: l.rot, lot: true, street: r.street || l.street }); n++;
   }
@@ -964,6 +1002,10 @@ http.createServer(async (req, res) => {
         } catch (e) { console.log('Ob-havo:', e.message); }
       }
       return send(res, 200, weather || { error: "Ob-havo hozircha yo'q" });
+    }
+    if (url.pathname === '/buildings.json') {
+      if (!fs.existsSync(BLD_FILE)) { loadBuildings(); return send(res, 200, { b: [] }); }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }); return fs.createReadStream(BLD_FILE).pipe(res);
     }
     if (url.pathname === '/pois.json') { // OSM joylari + admin qo'lda kiritgan joylar
       let osm = []; try { osm = JSON.parse(fs.readFileSync(POI_FILE, 'utf8')).joylar; } catch {}
