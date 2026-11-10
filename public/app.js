@@ -379,6 +379,27 @@ const HOUSE_BUILDERS = {
   },
 };
 // ---- Mashinalar: sport — haqiqiy 3D model (Ferrari 458), boshqalari — profil bo'yicha chizilgan ----
+// 👑 Sahifa egasining mega-binosi: pog'onali shisha osmono'par (~330 m), shpil, tunda yonadigan chiroqlar
+HOUSE_BUILDERS.mega = function (g, c) {
+  lawn(g, 64, 64, 0);
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, .4, 48), M(0xe9e4da, { roughness: .8 })); plaza.position.y = .2; plaza.receiveShadow = true; g.add(plaza);
+  const glassM = new THREE.MeshStandardMaterial({ color: 0x9cc7e6, metalness: .95, roughness: .06, envMapIntensity: 1.6, emissive: 0x1b3550, emissiveIntensity: .35 });
+  const frameM = new THREE.MeshStandardMaterial({ color: 0xd9dde2, metalness: .9, roughness: .25 });
+  const tiers = [[16, 70], [13.5, 60], [11, 55], [8.5, 50], [6.2, 40], [4.2, 30]]; let y = 0;
+  tiers.forEach(([r, h], i) => {
+    for (let k = 0; k < 3; k++) { // uch qanotli (Y shaklidagi) pog'onalar
+      const wing = new THREE.Mesh(new THREE.CylinderGeometry(r * .55, r * .62, h, 6), glassM); const a = k * Math.PI * 2 / 3 + i * .12;
+      wing.position.set(Math.cos(a) * r * .55, y + h / 2, Math.sin(a) * r * .55); wing.castShadow = true; g.add(wing);
+    }
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(r * .62, r * .7, h, 24), glassM); core.position.y = y + h / 2; core.castShadow = true; g.add(core);
+    for (let f = 4; f < h; f += 4) { const ring = new THREE.Mesh(new THREE.CylinderGeometry(r * .72, r * .72, .35, 24), frameM); ring.position.y = y + f; g.add(ring); }
+    y += h;
+  });
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(.25, 2.2, 70, 12), frameM); spire.position.y = y + 35; spire.castShadow = true; g.add(spire);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), new THREE.MeshStandardMaterial({ color: 0xff4040, emissive: 0xff2020, emissiveIntensity: 2 })); beacon.position.y = y + 71; g.add(beacon);
+  for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; const f = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 1.2, 12), M(0x2fb6ea, { metalness: .2, roughness: .05 })); f.position.set(Math.cos(a) * 22, .6, Math.sin(a) * 22); g.add(f); }
+  return y + 75;
+};
 const CAR_PROFILES = { // yon profil [uzunlik bo'yicha x, balandlik y] (metr)
   sedan: [[-2.3, .35], [2.3, .35], [2.35, .8], [1.6, 1], [.9, 1.45], [-.7, 1.5], [-1.6, 1.05], [-2.35, .95]],
   jeep: [[-2.35, .45], [2.35, .45], [2.4, 1.15], [1.7, 1.3], [1.35, 2], [-2.2, 2.05], [-2.4, 1.3]],
@@ -479,7 +500,7 @@ function house(r, opts = {}) {
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
   const av = avatarSprite(r); av.position.y = top + 19.5; av.userData.lod = 1; g.add(av); houseLabelGroups.push(g);
   if (!opts.data) { const bl = label('💰 ' + money(r.balance || 0), { size: 26, bg: 'rgba(255,214,90,.95)', fg: '#3b2f00', scale: .75 }); bl.position.y = top + 27; bl.renderOrder = 12; bl.userData.lod = 2; g.add(bl); } // hamyondagi summa — rasm tepasida
-  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 11.5; l.userData.lod = 1; g.add(l);
+  const l = label(opts.label || (r.owner ? '👑 @' : '@') + r.username, { size: 26, fg: r.owner ? '#b8860b' : '#2f7cf6', scale: r.owner ? 1.6 : .9 }); l.position.y = top + 11.5; l.userData.lod = 1; g.add(l);
   const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
   if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; al.userData.lod = 2; g.add(al); }
   g.position.set(r.x, 0, r.z);
@@ -716,8 +737,10 @@ $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key ==
 // ---- Hamyon, uy dizayni, mashina ----
 let wallet = { balance: 0, tx: [], shop: { houses: {}, cars: {}, repaint: 0 }, plots: [] };
 async function loadWallet() { if (!myRes()) return; try { wallet = await api('/api/me', me); $('bal').textContent = money(wallet.balance); } catch {} }
+const STYLE_NAMES_EXTRA = {};
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
 for (const c of 'abcdefghijklmnopqrstu') STYLE_NAMES['uy_' + c] = '🏡 Uy ' + c.toUpperCase();
+STYLE_NAMES.mega = '👑 Mega-bino';
 const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
 // ---- 💳 Balansni to'ldirish ----
 const TST = { pending: '⏳ tekshirilmoqda', approved: '✅ tushdi', rejected: '❌ rad etildi' };
@@ -765,13 +788,13 @@ async function openMyPanel() {
     <div class="wallet row" style="justify-content:space-between;align-items:center"><span>💰 Hamyon: <b>${money(wallet.balance)}</b></span><button class="ok" id="ptop">💳 To'ldirish</button></div>
     ${wallet.homeless ? '<div class="hint" style="background:#fff3e0;padding:8px;border-radius:10px">🏚️ Asosiy uyingizni sotgansiz. Yangi joy sotib olib, unda pulga uy qurishingiz mumkin.</div>' : ''}
     ${wallet.offersIn.length ? '<b>🤝 Sizga kelgan takliflar</b>' + wallet.offersIn.map((o) => `<div class="offer"><div>@${esc(o.initiator === 'buyer' ? o.buyer : o.seller)} — <b>${esc(o.title)}</b> uchun <b>${money(o.price)}</b> ${o.initiator === 'buyer' ? (o.buyerCanPay ? '<span class="okc">✓ puli yetarli</span>' : '<span class="noc">✗ puli yetmaydi</span>') : ''}</div><div class="row"><button class="ok" data-acc="${o.id}">${o.initiator === 'buyer' ? '✅ Sotildi' : '✅ Sotib olaman'}</button><button class="no" data-rej="${o.id}">Rad etish</button></div></div>`).join('') : ''}
-    <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy va mashina</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button></div>
+    <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy va mashina</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button><button class="ghost" id="ppass">🔑 Parol</button></div>
     <b>🏘️ Mening mulklarim</b>
     ${assets.map((a, i) => `<div class="offer"><div><b>${esc(a.title)}</b><div class="muted">📍 ${esc(addr(a.o))}</div></div><div class="row"><button class="ghost" data-fly="${i}">🔍</button><button class="ghost" data-ed="${i}">✏️ Manzil</button><button class="ghost" data-ds="${i}">🎨</button></div></div>`).join('') || '<div class="muted">Mulk yo\'q</div>'}
     ${wallet.offersOut.length ? `<details><summary class="muted">Mening takliflarim (${wallet.offersOut.length})</summary>${wallet.offersOut.map((o) => `<div class="muted">${fmtT(o.at)} · ${esc(o.title)} · ${money(o.price)} · ${o.initiator === 'buyer' ? '@' + esc(o.seller) + ' ga taklif' : '@' + esc(o.buyer) + ' ga sotish'} · ${ST_OFFER[o.status] || esc(o.status)} ${o.status === 'pending' ? `<a href="#" data-cnc="${o.id}">bekor qilish</a>` : ''}</div>`).join('')}</details>` : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
     <button class="ghost" id="nope">Yopish</button>`);
-  $('ptop').onclick = openTopup;
+  $('ptop').onclick = openTopup; $('ppass').onclick = askNewPass;
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
   document.querySelectorAll('[data-fly]').forEach((b) => (b.onclick = () => { const a = assets[b.dataset.fly]; closeModal(); flyTo(a.x, a.z, 70); }));
   document.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => assets[b.dataset.ds].design()));
@@ -966,6 +989,106 @@ async function checkUnread() {
 setInterval(checkUnread, 10000);
 $('inbox').onclick = openInbox;
 $('topup').onclick = openTopup;
+
+// ---- 👥 Umumiy chat (@shahrisabz.online.shahar) ----
+let roadGraph = null;
+function buildGraph() { // yo'llar grafi: har 12 m nuqta, yaqin nuqtalar bitta tugunga birlashadi (chorrahalar)
+  const N = new Map(), key = (x, z) => Math.round(x / 10) + ',' + Math.round(z / 10);
+  const node = (x, z) => { const k = key(x, z); if (!N.has(k)) N.set(k, { x, z, e: [] }); return N.get(k); };
+  const link = (a, b) => { if (a === b) return; const d = Math.hypot(a.x - b.x, a.z - b.z); a.e.push([b, d]); b.e.push([a, d]); };
+  for (const w of allWays) for (let i = 1; i < w.pts.length; i++) {
+    const [ax, az] = w.pts[i - 1], [bx, bz] = w.pts[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 12)); let pr = node(ax, az);
+    for (let k = 1; k <= n; k++) { const c = node(ax + (bx - ax) * k / n, az + (bz - az) * k / n); link(pr, c); pr = c; }
+  }
+  for (const [k, a] of N) { const [cx, cz] = k.split(',').map(Number); // chorrahalar: 9 m dan yaqin tugunlarni ulaymiz
+    for (let dx = 0; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { if (!dx && dz < 1) continue; const b = N.get((cx + dx) + ',' + (cz + dz)); if (b && !a.e.some(([m]) => m === b) && Math.hypot(a.x - b.x, a.z - b.z) < 9) link(a, b); } }
+  return [...N.values()];
+}
+function routePath(x1, z1, x2, z2) {
+  roadGraph ||= buildGraph(); if (!roadGraph.length) return null;
+  const near = (x, z) => { let best = null, bd = 1e18; for (const n of roadGraph) { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } } return best; };
+  const s = near(x1, z1), t = near(x2, z2); if (!s || !t) return null;
+  const dist = new Map([[s, 0]]), prev = new Map(), done = new Set(), H = [[0, s]];
+  const push = (it) => { H.push(it); let i = H.length - 1; while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
+  const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m; } } return top; };
+  while (H.length) {
+    const [d, n] = pop(); if (done.has(n)) continue; done.add(n); if (n === t) break;
+    for (const [m, w] of n.e) { const nd = d + w; if (nd < (dist.get(m) ?? 1e18)) { dist.set(m, nd); prev.set(m, n); push([nd, m]); } }
+  }
+  if (!done.has(t)) return null;
+  const out = [[x2, z2]]; for (let n = t; n; n = prev.get(n)) out.push([n.x, n.z]); out.push([x1, z1]); return { pts: out.reverse(), len: dist.get(t) };
+}
+window.routePath = routePath; let routeLine = null;
+function showRoute(x, z, label) {
+  const b = myBase(); if (!b) { flyTo(x, z, 80); return toast('Yo\'l ko\'rsatish uchun saytga kiring'); }
+  if (routeLine) scene.remove(routeLine);
+  const r = routePath(b.x, b.z, x, z); if (!r) { showDistLine(x, z); flyTo(x, z, 90); return; }
+  const curve = new THREE.CatmullRomCurve3(r.pts.map(([px, pz]) => new THREE.Vector3(px, 2.5, pz)), false, 'centripetal', 0);
+  routeLine = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.min(2000, r.pts.length * 4), 2.2, 6), new THREE.MeshBasicMaterial({ color: 0x1e88ff, depthTest: false, transparent: true, opacity: .85 }));
+  routeLine.renderOrder = 21; scene.add(routeLine);
+  flyTo((b.x + x) / 2, (b.z + z) / 2, Math.min(1800, Math.max(150, Math.hypot(b.x - x, b.z - z) * .9)));
+  toast(`🧭 ${label || 'Manzil'} — yo'l bo'ylab ${r.len > 1000 ? (r.len / 1000).toFixed(1) + ' km' : Math.round(r.len) + ' m'}`);
+}
+let groupMsgs = [], groupTimer = null, groupLast = 0;
+function gMsgHtml(m) {
+  const mine = me && m.from === me.username;
+  let body = esc(m.text || '');
+  if (m.type === 'image') body = `<a href="${esc(m.url)}" target="_blank"><img class="mimg" src="${esc(m.url)}" loading="lazy"></a>` + (m.text ? `<div>${esc(m.text)}</div>` : '');
+  if (m.type === 'video') body = `<video class="mimg" src="${esc(m.url)}" controls preload="metadata"></video>`;
+  if (m.type === 'audio') body = `<audio src="${esc(m.url)}" controls preload="metadata" style="max-width:230px"></audio>`;
+  if (m.type === 'home' || m.type === 'sell' || m.type === 'loc') {
+    const head = m.type === 'home' ? '🏠 Mening uyim' : m.type === 'sell' ? '🏷️ Uy sotiladi!' : '📍 Uyimning lokatsiyasi';
+    body = `<div class="gcard"><b>${head}</b><div>${esc(styleName(m.style))}</div><div class="muted">📍 ${esc(m.addr || '—')}</div>
+      ${m.type !== 'loc' ? `<div>💎 Qiymati: <b>${money(m.value || 0)}</b></div>` : ''}${m.type === 'sell' ? `<div style="color:#e24b4b">💰 Narxi: <b>${money(m.price)}</b></div>` : ''}
+      <div class="row"><button class="ghost" data-gr="${m.id}">🧭 Yo'l ko'rsat</button>${m.type === 'sell' && !mine ? `<button class="ok" data-gb="${m.id}">💰 Sotib olish taklifi</button>` : ''}</div></div>`;
+  }
+  return `<div class="bub ${mine ? 'mine' : ''} ${m.type !== 'text' ? 'media' : ''}">${mine ? '' : `<a href="#" class="gfrom" data-gu="${esc(m.from)}">@${esc(m.from)}</a>`}${body}<small>${fmtT(m.at)}</small></div>`;
+}
+function bindGroup(box) {
+  box.querySelectorAll('[data-gr]').forEach((b) => (b.onclick = () => { const m = groupMsgs.find((x) => x.id === b.dataset.gr); if (m) { closeGroup(); showRoute(m.x, m.z, '@' + m.from); } }));
+  box.querySelectorAll('[data-gb]').forEach((b) => (b.onclick = () => { const m = groupMsgs.find((x) => x.id === b.dataset.gb); if (m) openOffer({ owner: m.from, kind: m.houseKind || 'main', refId: m.houseId || '', title: `@${m.from} uyi` }); }));
+  box.querySelectorAll('[data-gu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); if (myRes() && a.dataset.gu !== me.username) openChat(a.dataset.gu); }));
+}
+async function loadGroup() {
+  if (!$('gmsgs')) return;
+  try { const { messages } = await api('/api/group/list', { after: groupLast }); if (!messages.length && groupMsgs.length) return;
+    groupMsgs.push(...messages); if (messages.length) groupLast = messages[messages.length - 1].at;
+    const box = $('gmsgs'), atB = box.scrollTop + box.clientHeight >= box.scrollHeight - 60;
+    box.innerHTML = groupMsgs.map(gMsgHtml).join('') || '<div class="empty"><b>👥 Umumiy chat</b><div class="muted">Birinchi bo\'lib yozing!</div></div>';
+    bindGroup(box); if (atB || messages.length) box.scrollTop = box.scrollHeight; } catch {}
+}
+function closeGroup() { $('chat').classList.add('hidden'); clearInterval(groupTimer); }
+let recorder = null;
+function openGroup() {
+  closeChat(); groupMsgs = []; groupLast = 0;
+  $('chat').innerHTML = `<div class="chead">${ava('shahrisabz.online.shahar')}<div style="flex:1"><b>@shahrisabz.online.shahar</b><div class="muted">👥 Umumiy chat — hamma uchun</div></div><button class="ghost" id="gclose">✕</button></div>
+    <div class="msgs" id="gmsgs"></div>
+    ${myRes() ? `<div class="row" style="padding:4px 8px;gap:4px;flex-wrap:wrap"><button class="ghost" id="ghome">🏠 Uyimni ko'rsat</button><button class="ghost" id="gsell">🏷️ Uyimni sotaman</button><button class="ghost" id="gloc">📍 Lokatsiyam</button></div>
+    <div class="cbar"><label class="cbtn" title="Rasm yoki video">📷<input type="file" id="gfile" accept="image/*,video/*" hidden></label><button class="cbtn" id="gmic" title="Ovozli xabar">🎤</button><input id="gtext" placeholder="Hammaga yozing…" maxlength="2000"><button id="gsend">➤</button></div>`
+    : '<div class="muted" style="padding:10px">✍️ Yozish uchun saytga kiring</div>'}`;
+  $('chat').classList.remove('hidden'); closeModal();
+  $('gclose').onclick = closeGroup;
+  loadGroup(); clearInterval(groupTimer); groupTimer = setInterval(loadGroup, 3000);
+  if (!myRes()) return;
+  const send = async (extra) => { try { await api('/api/group/send', { ...me, text: $('gtext').value.trim(), ...extra }); $('gtext').value = ''; await loadGroup(); } catch (e) { alert(e.message); } };
+  $('gsend').onclick = () => $('gtext').value.trim() && send();
+  $('gtext').addEventListener('keydown', (e) => e.key === 'Enter' && $('gtext').value.trim() && send());
+  const fileSend = (f) => { if (f.size > 20e6) return alert('Fayl 20 MB dan katta'); const rd = new FileReader(); $('gsend').textContent = '⏳'; rd.onload = async () => { await send({ file: { type: f.type, data: rd.result } }); $('gsend').textContent = '➤'; }; rd.readAsDataURL(f); };
+  $('gfile').onchange = (e) => { const f = e.target.files[0]; if (f) fileSend(f); e.target.value = ''; };
+  $('ghome').onclick = () => send({ kind: 'home' });
+  $('gloc').onclick = () => send({ kind: 'loc' });
+  $('gsell').onclick = () => { const p = prompt('Uyingizni necha so\'mga sotasiz?'); if (p) send({ kind: 'sell', price: Number(String(p).replace(/\D/g, '')) }); };
+  $('gmic').onclick = async () => {
+    if (recorder) { recorder.stop(); return; }
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: true }); const chunks = [];
+      recorder = new MediaRecorder(st); recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => { st.getTracks().forEach((t) => t.stop()); $('gmic').textContent = '🎤'; const bl = new Blob(chunks, { type: (recorder.mimeType || 'audio/webm').split(';')[0] }); recorder = null; if (bl.size > 500) fileSend(bl); };
+      recorder.start(); $('gmic').textContent = '⏹️'; toast('🎙️ Yozilmoqda… to\'xtatish uchun ⏹️ ni bosing');
+    } catch { alert('Mikrofonga ruxsat berilmadi'); }
+  };
+}
+$('group').onclick = openGroup;
 
 // ---- Animatsiya ----
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });

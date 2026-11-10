@@ -22,6 +22,16 @@ db.customPlaces ||= [];
 db.houses ||= []; // qo'shimcha (sotib olingan) uylar: {id, owner, x, z, style, colorHex, mahalla, street, no}
 db.offers ||= [];
 db.topups ||= []; // balans to'ldirish so'rovlari
+db.group ||= []; // umumiy chat (hamma uchun bitta)
+// Sahifa egasining akkaunti (bir marta yaratiladi; parolni keyin saytda o'zgartirish mumkin)
+const OWNER = 'shahrisabz.online.shahar';
+setTimeout(() => ensureOwner(), 0);
+function ensureOwner() {
+  let r = db.residents.find((x) => x.username === OWNER);
+  if (!r) { r = { id: id(), username: OWNER, link: 'https://instagram.com/' + OWNER, x: 0, z: 0, rot: 0, mahalla: 'Markaz', street: '', color: 210, createdAt: Date.now(), source: 'owner' }; db.residents.push(r); }
+  if (process.env.OWNER_PASSWORD && r.ownerPassSrc !== hash(process.env.OWNER_PASSWORD)) { r.pass = hash(process.env.OWNER_PASSWORD); r.ownerPassSrc = r.pass; r.mustChange = false; r.ownerInit = true; } // parol faqat Railway OWNER_PASSWORD dan
+  r.owner = true; r.style = 'mega'; r.lot = true; save(); if (ROADS) placeOwner();
+}
 db.settings.payment ||= { cards: [], note: "Pulni o'tkazgach, chek skrinshotini yuklang. Admin tekshirib, balansingizni to'ldiradi.", min: 10000 };
 const TOPUPS = path.join(__dirname, 'data', 'topups'); // sotish takliflari // admin qo'lda joylashtirgan mahalla/ko'chalar
 db.settings.pricePerSotix ||= (db.settings.pricePerM2 || 50000) * 100; // 1 sotix = 100 m²
@@ -112,7 +122,7 @@ function addFollower(username, source, pk) {
   return r;
 }
 
-const pub = (r) => ({ bname: r.bname || '', balance: r.balance || 0, rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
+const pub = (r) => ({ owner: !!r.owner, bname: r.bname || '', balance: r.balance || 0, rot: r.rot || 0, no: r.no || '', homeless: !!r.homeless, id: r.id, username: r.username, link: r.link, x: r.x, z: r.z, mahalla: r.mahalla, street: r.street, color: r.color, style: r.style || 'oddiy', colorHex: r.colorHex || null, cars: (r.cars || (r.car && r.car !== 'yoq' ? [{ t: r.car, c: hueHex(r.carColor || 0) }] : [])).map((c) => ({ t: c.t, c: c.c })), avatar: !!r.avatar, claimed: !!r.lastLogin });
 const pubPlot = (p) => ({ bname: p.bname || '', built: p.built !== false, no: p.no || '', colorHex: p.colorHex || null, sotix: p.sotix || Math.round(p.area / 10) / 10, style: p.style || 'oddiy', color: p.color ?? 40, id: p.id, owner: p.owner, x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, area: p.area, price: p.price, type: p.type, name: p.name, status: p.status, mahalla: p.mahalla, street: p.street });
 
 function send(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
@@ -447,7 +457,7 @@ function buildRoads(buf) {
     }
     ROADS = { segs, grid }; lotQueue = null;
     console.log(`Yo'llar indeksi: ${segs.length} bo'lak`);
-    relocateBadAuto();
+    relocateBadAuto(); placeOwner();
   } catch (e) { console.log("Yo'l indeksi xato:", e.message); }
 }
 // (x,z) nuqtadan eng yaqin yo'l chetigacha masofa (manfiy — yo'l ustida)
@@ -524,10 +534,16 @@ function autoLot() {
   return null;
 }
 // Avval avtomatik qurilgan, lekin yo'lga tushib qolgan uylarni tartibli joyga ko'chirish
+// Egasining mega-binosi shahar markaziga yaqin, yo'lga tegmaydigan katta joyga
+function placeOwner() {
+  const r = db.residents.find((x) => x.username === OWNER); if (!r || r.megaPlaced) return;
+  for (let rad = 60; rad < 1500; rad += 20) for (let a = 0; a < 6.28; a += 20 / rad) { const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
+    if (roadClear(x, z) > 40 && spotFree(x, z, OWNER)) { const nr = nearestRoadPt(x, z); Object.assign(r, { x: Math.round(x), z: Math.round(z), rot: nr ? Math.atan2(nr.px - x, nr.pz - z) : 0, megaPlaced: true, street: nr?.s.n || r.street }); save(); console.log('Mega-bino joyi:', r.x, r.z); return; } }
+}
 function relocateBadAuto() {
   let n = 0;
   for (const r of db.residents) {
-    if (r.homeless || r.mahalla !== 'Shahar chekkasi' || (r.lot && roadClear(r.x, r.z) >= HOUSE_R && !nearBuilding(r.x, r.z, HOUSE_R * .8))) continue; // hali ko'chmagan avto-uylar tartibli joyga
+    if (r.owner || r.homeless || r.mahalla !== 'Shahar chekkasi' || (r.lot && roadClear(r.x, r.z) >= HOUSE_R && !nearBuilding(r.x, r.z, HOUSE_R * .8))) continue; // hali ko'chmagan avto-uylar tartibli joyga
     const l = autoLot(); if (!l) break;
     Object.assign(r, { x: l.x, z: l.z, rot: l.rot, lot: true, street: r.street || l.street }); n++;
   }
@@ -622,12 +638,13 @@ async function api(req, res, url) {
     r.lastLogin = Date.now(); save();
     return send(res, 200, { ok: true, resident: pub(r), mustChange: !!r.mustChange });
   }
-  if (m === 'POST' && p === '/api/change-password') {
+  if (m === 'POST' && p === '/api/change-password') { // birinchi kirishda ham, keyin xohlagan paytda ham
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: "Joriy parol noto'g'ri" });
     const np = String(b.newPassword || '');
     if (np.length < 4) return send(res, 400, { error: "Yangi parol kamida 4 belgi bo'lsin" });
     if (np === db.settings.defaultPass) return send(res, 400, { error: 'Umumiy paroldan boshqa parol tanlang' });
+    if (r.owner) r.ownerInit = true;
     r.pass = hash(np); r.plainPass = np; r.mustChange = false; save();
     return send(res, 200, { ok: true });
   }
@@ -807,6 +824,31 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true, plot: pubPlot(plot) });
   }
 
+  // ---- UMUMIY CHAT (@shahrisabz.online.shahar): matn, rasm, video, ovoz, uy kartochkasi, sotuv e'loni, lokatsiya ----
+  if (m === 'POST' && p === '/api/group/list') {
+    const b = await body(req); const after = Number(b.after) || 0;
+    return send(res, 200, { messages: db.group.filter((x) => x.at > after).slice(-200) });
+  }
+  if (m === 'POST' && p === '/api/group/send') {
+    const b = await body(req); const r = userAuth(b);
+    if (!r) return send(res, 403, { error: 'Yozish uchun saytga kiring' });
+    const msg = { id: id(), from: r.username, at: Date.now(), type: 'text', text: String(b.text || '').trim().slice(0, 2000) };
+    if (b.file?.data) {
+      const mt = String(b.file.type || ''); const kind = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : null;
+      if (!kind) return send(res, 400, { error: 'Faqat rasm, video yoki ovoz' });
+      const buf = Buffer.from(String(b.file.data).split(',').pop(), 'base64'); if (buf.length > 20e6) return send(res, 413, { error: 'Fayl 20 MB dan katta' });
+      const ext = (mt.split('/')[1] || 'bin').split(';')[0].replace(/[^a-z0-9]/g, '').slice(0, 5);
+      const fn = id() + id() + '.' + ext; fs.mkdirSync(UPLOADS, { recursive: true }); fs.writeFileSync(path.join(UPLOADS, fn), buf);
+      Object.assign(msg, { type: kind, url: '/uploads/' + fn });
+    } else if (b.kind === 'home' || b.kind === 'sell' || b.kind === 'loc') { // uyim: kartochka / sotuv e'loni / lokatsiya
+      const tgt = b.houseId ? db.houses.find((h) => h.id === b.houseId && h.owner === r.username) : (!r.homeless ? r : null);
+      if (!tgt) return send(res, 400, { error: 'Sizda uy yo\'q' });
+      Object.assign(msg, { type: b.kind, x: tgt.x, z: tgt.z, style: tgt.style || 'oddiy', addr: [tgt.mahalla, tgt.street, tgt.no && 'uy ' + tgt.no].filter(Boolean).join(', '), value: (stylePrice(tgt.style || 'oddiy') || 0) + (tgt === r ? (r.cars || []).reduce((a, c) => a + (db.settings.shop.cars[c.t] || 0), 0) : 0), houseKind: b.houseId ? 'house' : 'main', houseId: b.houseId || '' });
+      if (b.kind === 'sell') { const pr = Math.round(Number(b.price)); if (!(pr > 0)) return send(res, 400, { error: 'Sotish narxini yozing' }); msg.price = pr; }
+    } else if (!msg.text) return send(res, 400, { error: "Xabar bo'sh" });
+    db.group.push(msg); if (db.group.length > 3000) db.group = db.group.slice(-3000); save();
+    return send(res, 200, { ok: true, message: msg });
+  }
   // ---- CHAT (uy egalari o'rtasida, hamma xabarlar saqlanadi) ----
   if (m === 'POST' && p.startsWith('/api/chat/')) {
     const b = await body(req); const r = userAuth(b);
@@ -818,8 +860,8 @@ async function api(req, res, url) {
       if (to === me) return send(res, 400, { error: 'O\'zingizga yozib bo\'lmaydi' });
       const msg = { id: id(), from: me, to, text, at: Date.now(), read: false, type: 'text' };
       if (b.file?.data) { // rasm yoki video
-        const mt = String(b.file.type || ''); const kind = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : null;
-        if (!kind) return send(res, 400, { error: 'Faqat rasm yoki video yuborish mumkin' });
+        const mt = String(b.file.type || ''); const kind = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : null;
+        if (!kind) return send(res, 400, { error: 'Faqat rasm, video yoki ovozli xabar yuborish mumkin' });
         const buf = Buffer.from(String(b.file.data).split(',').pop(), 'base64');
         if (buf.length > 20e6) return send(res, 413, { error: 'Fayl 20 MB dan katta' });
         const ext = (mt.split('/')[1] || 'bin').replace(/[^a-z0-9]/g, '').slice(0, 5);
@@ -985,7 +1027,7 @@ http.createServer(async (req, res) => {
       const f = path.normalize(path.join(UPLOADS, path.basename(url.pathname)));
       if (!f.startsWith(UPLOADS) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
       const ext = path.extname(f).slice(1);
-      res.writeHead(200, { 'Content-Type': ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', quicktime: 'video/quicktime', mov: 'video/quicktime' })[ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000' });
+      res.writeHead(200, { 'Content-Type': ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', webm: 'audio/webm', ogg: 'audio/ogg', mpeg: 'audio/mpeg', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4a: 'audio/mp4', wav: 'audio/wav', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', quicktime: 'video/quicktime', mov: 'video/quicktime' })[ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000' });
       return fs.createReadStream(f).pipe(res);
     }
     if (url.pathname.startsWith('/avatar/')) {

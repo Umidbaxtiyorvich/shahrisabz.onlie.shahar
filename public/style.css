@@ -66,3 +66,4 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 .bpicks{max-height:240px;overflow:auto}
 
 .wclock{font-size:13px;margin-top:4px;color:#1d2b53}
+.gcard{display:flex;flex-direction:column;gap:3px;min-width:200px}.gfrom{font-size:12px;font-weight:700;color:#1e66d0;text-decoration:none;display:block}
