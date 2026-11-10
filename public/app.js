@@ -6,7 +6,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=4';
+import { initLife } from './life.js?v=6';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
 const LAT0 = 39.0578, LON0 = 66.8297;
@@ -42,9 +42,10 @@ function canvasTex(size, draw, repeat = 1) {
 const rnd = (a, b) => a + Math.random() * (b - a);
 function speckle(g, n, size, cols, r0, r1, alpha = 1) { g.globalAlpha = alpha; for (let i = 0; i < n; i++) { g.fillStyle = cols[(Math.random() * cols.length) | 0]; const r = rnd(r0, r1); g.fillRect(Math.random() * size, Math.random() * size, r, r); } g.globalAlpha = 1; }
 const TEX = {
-  grass: canvasTex(512, (g, s) => { g.fillStyle = '#6f9a45'; g.fillRect(0, 0, s, s); speckle(g, 40, s, ['#5d8a3a', '#7fac52', '#86a04a', '#6a8f3f'], 40, 120, .35); speckle(g, 26000, s, ['#4f7a2f', '#8bb65a', '#a0b968', '#5e8c38', '#7a9a44'], 1, 3); speckle(g, 300, s, ['#a39a6b', '#8c7d55'], 2, 6, .5); }),
+  grass: canvasTex(512, (g, s) => { g.fillStyle = '#6fbf3c'; g.fillRect(0, 0, s, s); speckle(g, 40, s, ['#62b032', '#7fcb4c', '#8cc94e', '#69b83a'], 40, 120, .35); speckle(g, 26000, s, ['#4f7a2f', '#8bb65a', '#a0b968', '#5e8c38', '#7a9a44'], 1, 3); speckle(g, 300, s, ['#a39a6b', '#8c7d55'], 2, 6, .5); }),
   asphalt: canvasTex(256, (g, s) => { g.fillStyle = '#4a4d52'; g.fillRect(0, 0, s, s); speckle(g, 9000, s, ['#3c3f43', '#5a5d62', '#444749', '#66696d'], 1, 2); }),
   concrete: canvasTex(256, (g, s) => { g.fillStyle = '#c9c4b8'; g.fillRect(0, 0, s, s); speckle(g, 5000, s, ['#bdb7aa', '#d6d1c6', '#b2ad9f'], 1, 2); g.strokeStyle = '#a9a396'; g.lineWidth = 2; for (let i = 0; i <= s; i += s / 4) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke(); } }),
+  zebra: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#f7f5ee'; for (let x = 0; x < s; x += 16) g.fillRect(x + 2, 0, 9, s); }),
   dash: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#f4f1e8'; g.fillRect(0, s * .1, s * .55, s * .8); }),
   plaster: canvasTex(256, (g, s) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s); speckle(g, 7000, s, ['#ecebe7', '#f6f5f2', '#e2e0da'], 1, 3); }),
   tiles: canvasTex(256, (g, s) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s); for (let y = 0; y < s; y += 16) for (let x = (y / 16) % 2 ? -12 : 0; x < s; x += 24) { g.fillStyle = `hsl(0,0%,${rnd(72, 92)}%)`; g.fillRect(x + 1, y + 1, 22, 13); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, y + 13, 24, 3); } }),
@@ -59,14 +60,14 @@ const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.deg
 sky.material.uniforms.sunPosition.value.copy(sunDir);
 scene.fog = new THREE.Fog(0xc9d6e2, 2500, 12000);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 40000);
-camera.position.set(0, 1400, 1500);
+camera.position.set(0, 900, 620);
 const controls = new MapControls(camera, renderer.domElement);
 controls.maxPolarAngle = 1.35; controls.minDistance = 30; controls.maxDistance = 7000;
 controls.enableDamping = true;
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b7a4a, 1.5); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.2); sun.position.copy(sunDir).multiplyScalar(200); let life = null; const allWays = []; scene.add(sun); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 500 }); sun.shadow.bias = -.0005;
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ map: TEX.grass, roughness: 1, color: 0xd8dccb }));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ map: TEX.grass, roughness: 1, color: 0xf2f5e6 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 // bulutlar
 for (let i = 0; i < 18; i++) {
@@ -124,7 +125,7 @@ function drawMahallaBorders() {
   mahallaPolys = officialPlaces.map((o) => ({ n: o.n, rings: o.rings.map((r) => r.map(([lo, la]) => toXZ(la, lo))) }));
   for (const m of mahallaPolys) for (const r of m.rings) for (let i = 0; i < r.length - 1; i++) pos.push(r[i][0], 1.2, r[i][1], r[i + 1][0], 1.2, r[i + 1][1]);
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .45 })));
+  scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .18 })));
 }
 function inRing(x, z, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, zi] = r[i], [xj, zj] = r[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; }
 const mahallaAt = (x, z) => mahallaPolys.find((m) => m.rings.some((r) => inRing(x, z, r)))?.n || '';
@@ -164,7 +165,7 @@ function fallbackGrid() { // internet bo'lmasa — oddiy to'r
 }
 
 function buildRoads(data) {
-  const geos = [], lineGeo = [], walkGeo = [];
+  const geos = [], lineGeo = [], walkGeo = [], edgeGeo = [], zebraGeo = []; const nodes = new Map();
   const named = new Map();
   for (const w of data.ways) {
     const pts = w.xz || w.g.map(([la, lo]) => toXZ(la, lo));
@@ -178,6 +179,8 @@ function buildRoads(data) {
       geos.push(strip(len + wd * .6, wd, .3 + (wd > 10 ? .1 : 0), (len + wd * .6) / 6, wd / 6));
       if (wd >= 5) walkGeo.push(strip(len + wd, wd + 4, .2, (len + wd) / 3, (wd + 4) / 3)); // trotuar
       if (wd >= 11) lineGeo.push(strip(len, .35, .45, len / 6, 1)); // uzuq chiziq
+      if (wd >= 8) for (const sd of [1, -1]) { const g2 = strip(len, .25, .44, 1, 1); g2.translate(-(bz - az) / len * (wd / 2 - .5) * sd, 0, (bx - ax) / len * (wd / 2 - .5) * sd); edgeGeo.push(g2); } // yo'l cheti oq chizig'i
+      for (const [px, pz, ox, oz] of [[ax, az, bx, bz], [bx, bz, ax, az]]) { const k = Math.round(px) + ',' + Math.round(pz); const arr = nodes.get(k) || []; arr.push({ px, pz, ux: (ox - px) / len, uz: (oz - pz) / len, wd, len }); nodes.set(k, arr); }
       if (w.n) { const arr = named.get(w.n) || []; const mx = (ax + bx) / 2, mz = (az + bz) / 2; if (len > 12 && !arr.some((q) => Math.hypot(q.x - mx, q.z - mz) < 350)) arr.push({ x: mx, z: mz }); named.set(w.n, arr); }
     }
   }
@@ -185,6 +188,17 @@ function buildRoads(data) {
   addMerged(walkGeo, new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: .95 }), true);
   addMerged(geos, new THREE.MeshStandardMaterial({ map: TEX.asphalt, roughness: .9, color: 0xd0d0d0 }), true);
   addMerged(lineGeo, new THREE.MeshStandardMaterial({ map: TEX.dash, transparent: true, roughness: .6 }), false);
+  addMerged(edgeGeo, new THREE.MeshStandardMaterial({ color: 0xf4f2ea, roughness: .6 }), false);
+  // Chorrahalarda "zebra" piyoda o'tish joylari (3 va undan ko'p yo'l uchrashgan joyda)
+  for (const arr of nodes.values()) {
+    if (arr.length < 3) continue; const maxW = Math.max(...arr.map((a) => a.wd));
+    for (const a of arr) { if (a.wd < 6 || a.len < maxW + 8) continue;
+      const d = maxW / 2 + 3, cx = a.px + a.ux * d, cz = a.pz + a.uz * d;
+      const g3 = new THREE.PlaneGeometry(a.wd - 1, 3); const uv = g3.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * (a.wd - 1) / 4, uv.getY(k));
+      g3.rotateX(-Math.PI / 2); g3.rotateY(-Math.atan2(a.uz, a.ux) + Math.PI / 2); g3.translate(cx, .46, cz); zebraGeo.push(g3);
+      if (zebraGeo.length > 8000) break; }
+  }
+  addMerged(zebraGeo, new THREE.MeshStandardMaterial({ map: TEX.zebra, transparent: true, roughness: .6 }), false);
   streetNames = [...named.keys()];
   for (const o of officialStreets) { // rasmiy ro'yxatdagi ko'cha OSM'da boshqacha yozilgan bo'lsa ham topiladi
     const hit = streetNames.find((n) => nk(n) === nk(o.n)) || streetNames.find((n) => nk(n).includes(nk(o.n)) && nk(o.n).length > 3);
@@ -202,22 +216,25 @@ function buildRoads(data) {
   drawMahallaBorders();
   places = data.places.map((p) => { const [x, z] = p.xz || toXZ(p.lat, p.lon); return { name: p.n, k: p.k, x, z }; }).filter((p) => { const key = p.name + Math.round(p.x / 200) + Math.round(p.z / 200); if (seenP.has(key)) return false; seenP.add(key); return true; });
   for (const p of places) { const big = /suburb|town|village/.test(p.k || ''); const l = label('📍 ' + p.name, { size: 32, bg: big ? 'rgba(47,124,246,.92)' : 'rgba(31,164,99,.9)', fg: '#fff', scale: big ? 3.2 : 2.8 }); l.position.set(p.x, big ? 60 : 35, p.z); l.userData.big = big; scene.add(l); placeLabels.push(l); }
-  // daraxtlar: ko'cha bo'ylab, har xil o'lcham va yashil tuslarda (instancing — tez ishlaydi)
-  const N = 7000, crownG = new THREE.IcosahedronGeometry(1, 1), trunkG = new THREE.CylinderGeometry(.18, .28, 1, 6);
-  crownG.translate(0, 0, 0); trunkG.translate(0, .5, 0);
-  const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ roughness: .9, flatShading: true }), N);
+  // daraxtlar: ko'chalar bo'ylab qator-qator (trotuar yonida), dumaloq to'la shoxli, har xil yashil tuslarda
+  const parts = []; for (const [x, y, z, r] of [[0, 0, 0, 1], [.5, -.15, .25, .72], [-.45, .1, -.3, .7]]) { const sp = new THREE.IcosahedronGeometry(r, 1); sp.translate(x, y, z); parts.push(sp); } // ~240 uchburchak — tez ishlaydi
+  const crownG = mergeGeometries(parts), trunkG = new THREE.CylinderGeometry(.16, .26, 1, 7); trunkG.translate(0, .5, 0);
+  const spots = [];
+  const mid = (sg) => Math.hypot((sg.ax + sg.bx) / 2, (sg.az + sg.bz) / 2); // markazga yaqin ko'chalardan boshlab, har ko'cha bo'lagiga cheklangan son
+  for (const sg of [...segments].sort((a, b) => mid(a) - mid(b))) { const L = Math.hypot(sg.bx - sg.ax, sg.bz - sg.az); if (L < 10 || !sg.hw || sg.hw < 4) continue;
+    const ux = (sg.bx - sg.ax) / L, uz = (sg.bz - sg.az) / L, off = sg.hw + 3;
+    const tc = Math.max(0, Math.min(L, -sg.ax * ux - sg.az * uz)); // markazga eng yaqin nuqta
+    for (let t = Math.max(7, tc - 600); t < Math.min(L - 7, tc + 600); t += 15) for (const sd of [1, -1]) { const x = sg.ax + ux * t - uz * off * sd, z = sg.az + uz * t + ux * off * sd; if (Math.hypot(x, z) < 4200) spots.push([x, z]); }
+    if (spots.length > 4500) break; }
+  const N = Math.max(1, spots.length);
+  const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ roughness: .85 }), N);
   const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ map: TEX.bark, roughness: 1 }), N);
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color();
-  const near = segments.filter((sg) => Math.hypot(sg.ax, sg.az) < 4500);
-  for (let i = 0; i < N; i++) {
-    const sg = near[(Math.random() * near.length) | 0] || segments[0]; if (!sg) break;
-    const t = Math.random(), off = (Math.random() > .5 ? 1 : -1) * rnd(9, 16), dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L = Math.hypot(dx, dz) || 1;
-    const x = sg.ax + dx * t - dz / L * off, z = sg.az + dz * t + dx / L * off, h = rnd(3, 6.5), r = rnd(2, 4.2);
-    mtx.compose(ps.set(x, 0, z), q.identity(), sc.set(h / 4, h, h / 4)); trunks.setMatrixAt(i, mtx);
+  spots.forEach(([x, z], i) => { const h = rnd(2.4, 3.6), r = rnd(2.2, 3.2);
+    mtx.compose(ps.set(x, 0, z), q.identity(), sc.set(r / 3, h, r / 3)); trunks.setMatrixAt(i, mtx);
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.3);
-    mtx.compose(ps.set(x, h + r * .55, z), q, sc.set(r, r * rnd(.85, 1.3), r)); crowns.setMatrixAt(i, mtx);
-    crowns.setColorAt(i, col.setHSL(rnd(.24, .33), rnd(.45, .7), rnd(.12, .22)));
-  }
+    mtx.compose(ps.set(x, h + r * .7, z), q, sc.set(r, r * rnd(.9, 1.15), r)); crowns.setMatrixAt(i, mtx);
+    crowns.setColorAt(i, col.setHSL(rnd(.26, .33), rnd(.55, .75), rnd(.26, .36))); });
   crowns.castShadow = trunks.castShadow = true; scene.add(crowns, trunks);
 }
 
@@ -256,7 +273,7 @@ function nearestStreetName(x, z) {
 const nearestMahalla = (x, z) => mahallaAt(x, z) || places.reduce((b, p) => { const d = Math.hypot(p.x - x, p.z - z); return d < b.d ? { d, n: p.name } : b; }, { d: Infinity, n: '' }).n;
 
 // ---- Uylar va binolar ----
-const objects = new THREE.Group(); scene.add(objects);
+const objects = new THREE.Group(); scene.add(objects); const houseLabelGroups = [];
 const clickable = [];
 const hsl = (h, s = .65, l = .62) => new THREE.Color().setHSL(h / 360, s, l);
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .55, metalness: .05, ...o });
@@ -271,9 +288,22 @@ function box(g, w, h, d, mat, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(ne
 function win(g, w, h, x, y, z, rotY = 0) { const wg = new THREE.Group(); box(wg, w + .3, h + .3, .15, FRAME); box(wg, w, h, .2, GLASS); box(wg, .12, h, .25, FRAME); wg.position.set(x, y, z); wg.rotation.y = rotY; g.add(wg); return wg; }
 function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) win(g, (w / n) * .62, h, -w / 2 + (w / n) * (i + .5), y, z); }
 function railing(g, w, x, y, z) { box(g, w, 1, .1, new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: .35, roughness: .05, metalness: .3 }), x, y, z); box(g, w, .08, .14, FRAME, x, y + 1, z); }
-function tree(g, x, z, s = 1) { const t = new THREE.Mesh(new THREE.IcosahedronGeometry(2.2 * s, 1), M(new THREE.Color().setHSL(rnd(.24, .32), .5, rnd(.25, .35)), { roughness: .9, flatShading: true })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
+function tree(g, x, z, s = 1) { const t = new THREE.Mesh(new THREE.SphereGeometry(2.2 * s, 14, 10), M(new THREE.Color().setHSL(rnd(.25, .32), .55, rnd(.24, .32)), { roughness: .85 })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
 const LAWN = new THREE.MeshStandardMaterial({ map: (() => { const t = TEX.grass.clone(); t.repeat.set(4, 4); t.needsUpdate = true; return t; })(), roughness: 1 });
-function lawn(g, w, d, z = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, .15, d), LAWN); m.position.set(0, .07, z); m.receiveShadow = true; g.add(m); }
+const GRILLE = new THREE.MeshStandardMaterial({ map: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#2f343b'; for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 2, s); }, 1), transparent: true, alphaTest: .3, side: THREE.DoubleSide });
+GRILLE.map.repeat.set(12, 1);
+const FENCE = new THREE.MeshStandardMaterial({ color: 0xf3f1ea, roughness: .7 }), BARS = new THREE.MeshStandardMaterial({ color: 0x3b4048, metalness: .6, roughness: .4 }), HEDGE = new THREE.MeshStandardMaterial({ color: 0x3f8f3a, roughness: .95 }), STONE = new THREE.MeshStandardMaterial({ color: 0xcfc8bb, roughness: .9 });
+// Hovli: maysa + oq devorli panjara (old tomonda darvoza), tosh yo'lak, butalar
+function lawn(g, w, d, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, .15, d), LAWN); m.position.set(0, .07, z); m.receiveShadow = true; g.add(m);
+  const f = new THREE.Group(), gate = 6, hw = w / 2, hd = d / 2;
+  const side = (len, x, zz, rot) => { const s1 = new THREE.Group(); box(s1, len, .55, .3, FENCE, 0, 0, 0); box(s1, len, .08, .08, BARS, 0, 1.45, 0); for (let p = -len / 2; p <= len / 2 + .01; p += 2.4) box(s1, .3, 1.6, .3, FENCE, p, 0, 0); box(s1, len, .9, .03, GRILLE, 0, .55, 0); s1.position.set(x, 0, zz); s1.rotation.y = rot; f.add(s1); };
+  side(w, 0, z - hd, 0); side(d, -hw, z, Math.PI / 2); side(d, hw, z, Math.PI / 2);
+  const fl = (w - gate) / 2; side(fl, -(gate / 2 + fl / 2), z + hd, 0); side(fl, gate / 2 + fl / 2, z + hd, 0);
+  box(f, gate - .4, .12, hd - 4, STONE, 0, .08, z + hd / 2 + 2); // darvozadan uygacha tosh yo'lak
+  for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.BoxGeometry(fl - 1.6, .9, 1.3), HEDGE); h.position.set(sx * (gate / 2 + fl / 2), .55, z + hd - 1.4); h.castShadow = true; g.add(h); }
+  g.add(f);
+}
 // Uy dizaynlari: oddiy → zamonaviy → kottej → villa → minora
 const HOUSE_BUILDERS = {
   oddiy(g, c) {
@@ -409,11 +439,11 @@ function house(r, opts = {}) {
   const top = buildStyle(g, r.style, colorOf(r, 20));
   const bi = bInfo(r.style); if (bi) { const sg = label(`${bi.i} ${r.bname || bi.n}`, { size: 28, bg: 'rgba(29,43,83,.92)', fg: '#fff', scale: .85 }); sg.position.y = top + 5.5 + (bi.m === 'office' || bi.m === 'hotel' ? 0 : 0); sg.position.y = top - 1.5; sg.renderOrder = 12; g.add(sg); }
   (r.cars || []).slice(0, CAR_SLOTS.length).forEach((c, i) => { const cg = car(c.t, c.c); const [x, z, ry] = CAR_SLOTS[i]; cg.position.set(x, 0, z); cg.rotation.y = ry + Math.PI / 2; g.add(cg); });
-  const av = avatarSprite(r); av.position.y = top + 19.5; g.add(av);
-  if (!opts.data) { const bl = label('💰 ' + money(r.balance || 0), { size: 26, bg: 'rgba(255,214,90,.95)', fg: '#3b2f00', scale: .75 }); bl.position.y = top + 27; bl.renderOrder = 12; g.add(bl); } // hamyondagi summa — rasm tepasida
-  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 11.5; g.add(l);
+  const av = avatarSprite(r); av.position.y = top + 19.5; av.userData.lod = 1; g.add(av); houseLabelGroups.push(g);
+  if (!opts.data) { const bl = label('💰 ' + money(r.balance || 0), { size: 26, bg: 'rgba(255,214,90,.95)', fg: '#3b2f00', scale: .75 }); bl.position.y = top + 27; bl.renderOrder = 12; bl.userData.lod = 2; g.add(bl); } // hamyondagi summa — rasm tepasida
+  const l = label(opts.label || '@' + r.username, { size: 26, fg: '#2f7cf6', scale: .9 }); l.position.y = top + 11.5; l.userData.lod = 1; g.add(l);
   const adr = [r.mahalla && r.mahalla !== 'Shahar chekkasi' ? r.mahalla : '', r.street, r.no && 'uy ' + r.no].filter(Boolean).join(', ');
-  if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; g.add(al); }
+  if (adr) { const al = label('📍 ' + adr, { size: 24, bg: 'rgba(255,255,255,.95)', fg: '#1d2433', scale: .7 }); al.position.y = top + 3.2; al.renderOrder = 12; al.userData.lod = 2; g.add(al); }
   g.position.set(r.x, 0, r.z);
   for (const c of g.children) if (!c.isSprite) c.rotation.y += r.rot || 0; // uy eshigi ko'chaga qaraydi (yozuvlar burilmaydi)
   g.userData = opts.data || { kind: 'house', r };
@@ -469,7 +499,7 @@ async function refresh() {
   state = await api('/api/state');
   clickable.length = 0; clickable.push(...poiLabels);
   objects.traverse((o) => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
-  objects.clear(); lodCars.length = 0;
+  objects.clear(); lodCars.length = 0; houseLabelGroups.length = 0;
   state.residents.forEach((r) => { if (!r.homeless) objects.add(house(r)); });
   (state.houses || []).forEach((h) => { const o = state.residents.find((r) => r.username === h.owner) || {}; objects.add(house({ ...h, username: h.owner, avatar: o.avatar, cars: [] }, { label: `@${h.owner} ${h.n}`, data: { kind: 'xhouse', h } })); });
   state.plots.forEach((p) => objects.add(plotObj(p)));
@@ -903,7 +933,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 let frame = 0;
 (function loop() {
   requestAnimationFrame(loop); controls.update();
-  if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 1100 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; for (const l of poiLabels) l.visible = h < 700 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.6; }
+  if (frame++ % 15 === 0) { const t = controls.target, h = camera.position.y; for (const l of streetLabels) l.visible = h < 600 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.8; for (const l of placeLabels) l.visible = l.userData.big || h < 2600; for (const l of poiLabels) l.visible = h < 450 && Math.hypot(l.position.x - t.x, l.position.z - t.z) < h * 1.6;
+    // uy yozuvlari: uzoqdan ko'rinmaydi (rasm toza turadi), yaqinda nik, juda yaqinda balans va manzil
+    for (const g of houseLabelGroups) { const d = Math.hypot(g.position.x - camera.position.x, g.position.z - camera.position.z) + h; for (const c of g.children) if (c.isSprite && c.userData.lod) c.visible = c.userData.lod === 1 ? d < 420 : d < 190; } }
   const t = controls.target; const sd = sky.material.uniforms.sunPosition.value; sun.position.set(t.x + sd.x * 200, Math.max(20, sd.y * 200), t.z + sd.z * 200); if (life) life.tick(); sun.target.position.copy(t);
   if (frame % 20 === 0) { const wp = new THREE.Vector3(); for (const g of lodCars) { if (!g.parent) continue; g.getWorldPosition(wp); const near = wp.distanceTo(camera.position) < 260; const l = g.userData.lod; if (near) upgradeLod(g); if (l.real) { l.real.visible = near; l.simple.visible = !near; } } }
   renderer.render(scene, camera);
@@ -922,7 +954,7 @@ let frame = 0;
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
-  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $ });
+  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries });
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
   setInterval(() => mode === 'view' && refresh().catch(() => {}), 30000);
