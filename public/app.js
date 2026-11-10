@@ -380,7 +380,7 @@ const HOUSE_BUILDERS = {
 };
 // ---- Mashinalar: sport — haqiqiy 3D model (Ferrari 458), boshqalari — profil bo'yicha chizilgan ----
 // 👑 Sahifa egasining mega-binosi: pog'onali shisha osmono'par (~330 m), shpil, tunda yonadigan chiroqlar
-HOUSE_BUILDERS.mega = function (g, c) {
+HOUSE_BUILDERS.megaOld = function (g, c) {
   lawn(g, 64, 64, 0);
   const plaza = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, .4, 48), M(0xe9e4da, { roughness: .8 })); plaza.position.y = .2; plaza.receiveShadow = true; g.add(plaza);
   const glassM = new THREE.MeshStandardMaterial({ color: 0x9cc7e6, metalness: .95, roughness: .06, envMapIntensity: 1.6, emissive: 0x1b3550, emissiveIntensity: .35 });
@@ -737,6 +737,20 @@ $('qbtn').onclick = doSearch; $('q').addEventListener('keydown', (e) => e.key ==
 // ---- Hamyon, uy dizayni, mashina ----
 let wallet = { balance: 0, tx: [], shop: { houses: {}, cars: {}, repaint: 0 }, plots: [] };
 async function loadWallet() { if (!myRes()) return; try { wallet = await api('/api/me', me); $('bal').textContent = money(wallet.balance); } catch {} }
+
+// 👑 Profil egasining binosi: Burj Khalifa modeli ("( FREE ) Burj Khalifa Dubai", SDC PERFORMANCE, Sketchfab, CC-BY-4.0)
+let burjP = null;
+HOUSE_BUILDERS.mega = function (g, c) {
+  const tmp = new THREE.Group(); g.add(tmp); const h = HOUSE_BUILDERS.megaOld(tmp, c); // model yuklanguncha vaqtinchalik
+  burjP ||= new Promise((ok) => new GLTFLoader().load('./models/burj-khalifa.glb', (gl) => ok(gl.scene), undefined, () => ok(null)));
+  burjP.then((sc) => {
+    if (!sc) return; const m = sc.clone(true), box = new THREE.Box3().setFromObject(m), sz = box.getSize(new THREE.Vector3()), k = 600 / sz.y, cn = box.getCenter(new THREE.Vector3());
+    m.scale.setScalar(k); m.position.set(-cn.x * k, -box.min.y * k, -cn.z * k);
+    m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material) { o.material = o.material.clone(); o.material.color.lerp(new THREE.Color(0xdfe8f2), .55); o.material.metalness = .7; o.material.roughness = .22; o.material.envMapIntensity = 1.6; } } });
+    g.remove(tmp); lawn(g, 120, 120, 0); g.add(m);
+  });
+  return Math.max(h, 600);
+};
 const STYLE_NAMES_EXTRA = {};
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
 for (const c of 'abcdefghijklmnopqrstu') STYLE_NAMES['uy_' + c] = '🏡 Uy ' + c.toUpperCase();
