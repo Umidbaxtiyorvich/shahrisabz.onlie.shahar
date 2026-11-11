@@ -1,7 +1,7 @@
 // ✨ Shahar hayoti: tirik hovli, qo'shniga sovg'a, "Mahallam xotirasi", birgalikda shahar bog'i, Shahrisabz tarixi kolleksiyasi, mini-o'yinlar.
 // app.js dan C (kontekst) bilan ishga tushiriladi.
 import { buildMonuments } from './monuments.js?v=1';
-import { initTimeMachine } from './timemachine.js?v=1';
+import { initTimeMachine } from './timemachine.js?v=3';
 export function initFun(C) {
   const { THREE, scene, camera, renderer, controls, K, $, api, getMe, myRes, modal, closeModal, toast, money, esc, ava, flyTo, toXZ, label, setBalance } = C;
   let fs = null, tab = 'farm', pub = { memories: [], trees: [], history: {} };

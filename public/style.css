@@ -116,7 +116,10 @@ textarea{border:1px solid #cfd8e6;border-radius:10px;padding:8px 10px;font:inher
 .pairs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.pcard{aspect-ratio:1;font-size:30px;background:#2f7cf6;padding:0}.pcard.open{background:#fff3c4}
 .tbar{position:relative;height:34px;background:#f3e3bd;border-radius:17px;overflow:hidden}.tbar i{position:absolute;top:0;bottom:0;background:#1fa463;opacity:.8}.tbar b{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;background:#c0392b;border-radius:3px}
 /* 🕰️ Vaqt mashinasi */
-.tmbar{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:4px;align-items:center;padding:6px 8px;margin-left:220px}
-.tmbar button{padding:6px 10px;font-size:13px}.tmbar button.on{background:#7a4cf2;color:#fff}.tmt{font-size:20px}
-@media (max-width:1250px){.tmbar{top:86px;left:12px;transform:none;margin-left:0}}
-@media (max-width:600px){.tmbar{top:118px;left:8px;padding:4px}.tmbar button{padding:6px 7px;font-size:12px}}
+.tmbar{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:8px;align-items:center;padding:6px 10px;margin-left:230px;width:min(560px,calc(100% - 24px))}
+.tmbar.past{background:rgba(255,244,222,.94)}.tmbar.fut{background:rgba(222,245,255,.94)}
+.tmmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.tmtop{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tmbar input[type=range]{width:100%;padding:0;accent-color:#7a4cf2;border:0;background:transparent}
+.tmq{display:flex;gap:3px;overflow-x:auto;scrollbar-width:none}.tmq button{padding:3px 7px;font-size:11px;flex:none}.tmt{font-size:22px}
+@media (max-width:1300px){.tmbar{top:86px;left:12px;transform:none;margin-left:0}}
+@media (max-width:600px){.tmbar{top:118px;left:8px;width:calc(100% - 16px);padding:4px 8px}.tmt{display:none}}

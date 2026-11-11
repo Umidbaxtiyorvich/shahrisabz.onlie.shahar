@@ -989,7 +989,7 @@ async function api(req, res, url) {
     }
     if (p === '/api/fun/era') { // 🕰️ vaqt mashinasi topilmalari
       r.era ||= {}; if (b.list) return send(res, 200, { got: r.era });
-      const ids = ['e1400a', 'e1400b', 'e1400c', 'e1900a', 'e1900b', 'e1900c', 'e1970a', 'e1970b', 'e1970c'];
+      const ids = ['e1400a', 'e1400b', 'e1400c', 'e1900a', 'e1900b', 'e1900c', 'e1970a', 'e1970b', 'e1970c', 'e0500a', 'e2100a', 'e2100b'];
       if (!ids.includes(b.item)) return send(res, 404, { error: 'Topilmadi' }); if (r.era[b.item]) return send(res, 400, { error: 'Allaqachon topilgan' });
       r.era[b.item] = now; const all = ids.every((k) => r.era[k]), g = 300 + (all ? 5000 : 0); r.balance = (r.balance || 0) + g; addTx(r, g, `🕰️ Vaqt sayohati topilmasi${all ? ' — to\'liq kolleksiya!' : ''}`); save();
       return send(res, 200, { ok: true, reward: g, all, got: r.era, balance: r.balance });
