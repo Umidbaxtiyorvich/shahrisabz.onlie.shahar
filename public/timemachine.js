@@ -110,8 +110,8 @@ export function initTimeMachine(C) {
       const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), gr = x.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(255,230,140,1)'); gr.addColorStop(1, 'rgba(255,200,60,0)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); x.font = '64px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(n.split(' ')[0], 64, 68);
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, opacity: got[id] ? .35 : 1 })); sp.scale.setScalar(9); sp.position.set(p[0], 6, p[1]); sp.userData.eraItem = id; g.add(sp); items.push(sp); } }
   // Kelajak: shisha osmono'parlar (kechasi yonadi), quyosh panelli tomlar, uchar mashinalar
-  function future(g, y) { const k = Math.min(1, (y - 2030) / 100), n = Math.round(25 + k * 110), list = []; let tries = 0;
-    while (list.length < n && tries++ < n * 12) { const a = rnd() * 6.283, d = 300 + Math.sqrt(rnd()) * (1200 + k * 1800), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!free(x, z, 22)) continue; const h = 60 + rnd() * (90 + k * 260); list.push([x, z, 16 + rnd() * 14, h, 16 + rnd() * 14, rnd() * 3]); }
+  function future(g, y) { const k = Math.min(1, (y - 2030) / 100), n = Math.round(40 + k * 160), list = []; let tries = 0;
+    while (list.length < n && tries++ < n * 12) { const a = rnd() * 6.283, d = 160 + Math.sqrt(rnd()) * (700 + k * 1400), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!free(x, z, 22)) continue; const h = 60 + rnd() * (90 + k * 260); list.push([x, z, 16 + rnd() * 14, h, 16 + rnd() * 14, rnd() * 3]); }
     const gl = new THREE.MeshStandardMaterial({ color: 0x9fd4f0, metalness: .9, roughness: .08, emissive: 0x2a6fa8, emissiveIntensity: .35 });
     g.add(instanced(new THREE.CylinderGeometry(.5, .62, 1, 6).translate(0, .5, 0), gl, list));
     const tops = list.map(([x, z, w, h, d]) => [x, z + 0, w * .9, h + 2, d * .9, 0]); g.add(instanced(new THREE.ConeGeometry(.35, .08, 6).translate(0, 1, 0), new THREE.MeshStandardMaterial({ color: 0xe8f6ff, emissive: 0x9fe8ff, emissiveIntensity: .8 }), tops));
