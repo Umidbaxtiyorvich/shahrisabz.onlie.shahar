@@ -987,6 +987,13 @@ async function api(req, res, url) {
       r.hist[b.site] = now; const all = Object.keys(r.hist).length === Object.keys(HISTORY).length, g = 300 + (all ? 8000 : 0);
       r.balance = (r.balance || 0) + g; addTx(r, g, `🏛️ ${H.n}${all ? ' — to\'liq kolleksiya!' : ''}`); save(); return send(res, 200, { ok: true, got: g, all, ...funState(r) });
     }
+    if (p === '/api/fun/era') { // 🕰️ vaqt mashinasi topilmalari
+      r.era ||= {}; if (b.list) return send(res, 200, { got: r.era });
+      const ids = ['e1400a', 'e1400b', 'e1400c', 'e1900a', 'e1900b', 'e1900c', 'e1970a', 'e1970b', 'e1970c'];
+      if (!ids.includes(b.item)) return send(res, 404, { error: 'Topilmadi' }); if (r.era[b.item]) return send(res, 400, { error: 'Allaqachon topilgan' });
+      r.era[b.item] = now; const all = ids.every((k) => r.era[k]), g = 300 + (all ? 5000 : 0); r.balance = (r.balance || 0) + g; addTx(r, g, `🕰️ Vaqt sayohati topilmasi${all ? ' — to\'liq kolleksiya!' : ''}`); save();
+      return send(res, 200, { ok: true, reward: g, all, got: r.era, balance: r.balance });
+    }
     if (p === '/api/fun/game') {
       if (r.gameDay !== today) { r.gameDay = today; r.gamePlays = 0; }
       if (r.gamePlays >= GAME_LIMIT) return send(res, 400, { error: "Bugungi o'yin mukofotlari tugadi. Ertaga keling!" });

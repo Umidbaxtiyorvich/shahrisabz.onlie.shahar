@@ -8,7 +8,7 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
 import { initLife } from './life.js?v=12';
-import { initFun } from './fun.js?v=3';
+import { initFun } from './fun.js?v=4';
 import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 
@@ -1249,7 +1249,7 @@ let frame = 0;
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
   life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean), lampParts: K.partsH('r-light-curved', 8), surfaces: [ground.material, LAWN, ROADM] });
-  fun = initFun({ THREE, scene, camera, renderer, controls, K, $, api, getMe: () => me, myRes, modal, closeModal, toast, money, esc, ava, flyTo, toXZ, label, setBalance: (b) => { wallet.balance = b; if ($('bal')) $('bal').textContent = money(b); } });
+  fun = initFun({ THREE, scene, camera, renderer, controls, K, $, api, ground, sky, roadMat: ROADM, roadClear: roadClearC, ways: allWays, getMe: () => me, myRes, modal, closeModal, toast, money, esc, ava, flyTo, toXZ, label, setBalance: (b) => { wallet.balance = b; if ($('bal')) $('bal').textContent = money(b); } });
   // Egasiz (OSM) haqiqiy binolar o'chirilgan: shaharda faqat obunachilarning uylari va sotib olingan binolar turadi
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
