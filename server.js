@@ -388,7 +388,9 @@ async function dmWorker() {
 setInterval(() => dmWorker().catch(() => {}), 10 * 1000); // 10 soniyada 1 ta xabar
 
 // ---- 🎮 O'yin iqtisodiyoti: binolar soatiga daromad beradi, yig'ib olinadi, darajasi oshiriladi; kunlik bonus; do'st taklifi ----
-db.settings.econ = Object.assign({ bizPct: 1, homePct: .25, capHours: 12, levelCostPct: 60, levelBonus: 30, maxLevel: 10, dailyBase: 5000, dailyStep: 2500, dailyMax: 40000, refBonus: 25000, refInvitee: 10000 }, db.settings.econ || {});
+const ECON_DEF = { bizPct: .08, homePct: .02, capHours: 12, levelCostPct: 60, levelBonus: 20, maxLevel: 10, dailyBase: 500, dailyStep: 200, dailyMax: 3000, refBonus: 2000, refInvitee: 1000 };
+db.settings.econ = Object.assign({ ...ECON_DEF }, db.settings.econ || {});
+if ((db.settings.econV || 0) < 2) { Object.assign(db.settings.econ, ECON_DEF); db.settings.econV = 2; } // mukofotlar ~10 barobar kamaytirildi
 const HOUR = 3600e3, DAY = 864e5;
 const tzDay = (t) => Math.floor((t + 5 * HOUR) / DAY); // O'zbekiston kuni (UTC+5)
 function econAssets(r) { // foydalanuvchining daromad beradigan mulklari
@@ -415,10 +417,10 @@ function econState(r) {
 }
 // ---- ✨ Shahar hayoti: hovli, sovg'alar, mahalla xotiralari, birgalikdagi maqsad, tarix kolleksiyasi, mini-o'yinlar ----
 db.memories ||= []; db.gifts ||= []; db.city ||= { trees: 0, spots: [], goalsDone: 0 };
-const FARM = { egg: { cd: 4, base: 2500, n: "🥚 Tuxum", per: 'hen' }, bread: { cd: 8, base: 6000, n: "🫓 Tandir non" }, grape: { cd: 24, base: 18000, n: "🍇 Uzum" }, milk: { cd: 12, base: 9000, n: "🥛 Sut", per: 'cow' } };
+const FARM = { egg: { cd: 4, base: 200, n: "🥚 Tuxum", per: 'hen' }, bread: { cd: 8, base: 500, n: "🫓 Tandir non" }, grape: { cd: 24, base: 1500, n: "🍇 Uzum" }, milk: { cd: 12, base: 700, n: "🥛 Sut", per: 'cow' } };
 const FARM_BUY = { hen: { p: 15000, max: 20, n: '🐔 Tovuq' }, cow: { p: 120000, max: 5, n: '🐄 Sigir' } };
 const GIFTS = { gul: { p: 2000, n: '🌹 Gul' }, non: { p: 1500, n: '🫓 Non' }, choy: { p: 1000, n: '🍵 Choy' }, shirinlik: { p: 5000, n: '🍬 Shirinlik' }, tort: { p: 25000, n: '🎂 Tort' }, oltin: { p: 100000, n: '💍 Oltin uzuk' } };
-const CITY_GOALS = [{ n: 500, t: '🌳 Birinchi xiyobon', bonus: 10000 }, { n: 2000, t: '🏞️ Shahar bog\'i', bonus: 25000 }, { n: 5000, t: '⛲ Favvorali park', bonus: 50000 }, { n: 10000, t: '🌲 Yashil Shahrisabz', bonus: 100000 }, { n: 25000, t: '🏆 Eng yashil shahar', bonus: 250000 }];
+const CITY_GOALS = [{ n: 500, t: '🌳 Birinchi xiyobon', bonus: 1000 }, { n: 2000, t: '🏞️ Shahar bog\'i', bonus: 2000 }, { n: 5000, t: '⛲ Favvorali park', bonus: 4000 }, { n: 10000, t: '🌲 Yashil Shahrisabz', bonus: 8000 }, { n: 25000, t: '🏆 Eng yashil shahar', bonus: 20000 }];
 const HISTORY = {
   oqsaroy: { n: 'Oqsaroy', lat: 39.0636, lon: 66.8290, y: '1380–1404', f: "Amir Temurning yozgi saroyi. Peshtoqi 50 metrdan baland bo'lgan, kirish ravog'i O'rta Osiyodagi eng kattalaridan biri edi." },
   temur: { n: 'Amir Temur haykali', lat: 39.0618, lon: 66.8293, y: '1996', f: "Amir Temur 1336-yilda Shahrisabz yaqinidagi Xo'ja Ilg'or qishlog'ida tug'ilgan." },
@@ -441,7 +443,7 @@ function historyFixed() { // OSM dagi haqiqiy obida nuqtasi topilsa — o'sha ko
   histFixAt = Date.now(); return histFix;
 }
 const nearMonument = (x, z, pad = 0) => Object.entries(historyFixed()).some(([k, h]) => HIST_R[k] && Math.hypot(...((p) => [p[0] - x, p[1] - z])(toXZ(h.lat, h.lon))) < HIST_R[k] + pad);
-const GAME_LIMIT = 5, GAME_MAX = 8000;
+const GAME_LIMIT = 3, GAME_MAX = 600;
 function cityGoalPay(r) { let paid = 0; while ((r.cityPaid || 0) < db.city.goalsDone) { const g = CITY_GOALS[r.cityPaid || 0]; r.balance = (r.balance || 0) + g.bonus; addTx(r, g.bonus, `🎉 Shahar maqsadi: ${g.t}`); r.cityPaid = (r.cityPaid || 0) + 1; paid += g.bonus; } return paid; }
 function funState(r) {
   const now = Date.now(), f = r.farm ||= { hen: 3, cow: 0, t: {} }, today = tzDay(now);
@@ -966,7 +968,7 @@ async function api(req, res, url) {
       if (db.memories.filter((x) => x.from === r.username && now - x.at < DAY).length >= 5) return send(res, 400, { error: "Kuniga 5 tagacha xotira" });
       const mm = { id: id(), from: r.username, title, text, year: String(b.year || '').slice(0, 12), mahalla: String(b.mahalla || '').slice(0, 60), x: Math.round(b.x), z: Math.round(b.z), at: now, likes: [] };
       if (b.file?.data) { const mt = String(b.file.type || ''); if (!mt.startsWith('image/')) return send(res, 400, { error: 'Faqat rasm' }); const buf = Buffer.from(String(b.file.data).split(',').pop(), 'base64'); if (buf.length > 8e6) return send(res, 413, { error: 'Rasm 8 MB dan katta' }); const fn = id() + id() + '.' + (mt.split('/')[1] || 'jpg').replace(/[^a-z0-9]/g, '').slice(0, 4); fs.mkdirSync(UPLOADS, { recursive: true }); fs.writeFileSync(path.join(UPLOADS, fn), buf); mm.img = '/uploads/' + fn; }
-      db.memories.push(mm); const first = db.memories.filter((x) => x.from === r.username).length === 1; if (first) { r.balance = (r.balance || 0) + 10000; addTx(r, 10000, '📜 Birinchi xotira uchun'); } save(); return send(res, 200, { ok: true, memory: mm, bonus: first ? 10000 : 0 });
+      db.memories.push(mm); const first = db.memories.filter((x) => x.from === r.username).length === 1; if (first) { r.balance = (r.balance || 0) + 1000; addTx(r, 1000, '📜 Birinchi xotira uchun'); } save(); return send(res, 200, { ok: true, memory: mm, bonus: first ? 1000 : 0 });
     }
     if (p === '/api/fun/plant') {
       const free = r.treeDay !== today, cost = free ? 0 : 3000;
@@ -982,7 +984,7 @@ async function api(req, res, url) {
     if (p === '/api/fun/history') {
       const H = HISTORY[b.site]; if (!H) return send(res, 404, { error: 'Topilmadi' }); r.hist ||= {};
       if (r.hist[b.site]) return send(res, 400, { error: 'Bu kartochka allaqachon kolleksiyangizda' });
-      r.hist[b.site] = now; const all = Object.keys(r.hist).length === Object.keys(HISTORY).length, g = 5000 + (all ? 100000 : 0);
+      r.hist[b.site] = now; const all = Object.keys(r.hist).length === Object.keys(HISTORY).length, g = 300 + (all ? 8000 : 0);
       r.balance = (r.balance || 0) + g; addTx(r, g, `🏛️ ${H.n}${all ? ' — to\'liq kolleksiya!' : ''}`); save(); return send(res, 200, { ok: true, got: g, all, ...funState(r) });
     }
     if (p === '/api/fun/game') {

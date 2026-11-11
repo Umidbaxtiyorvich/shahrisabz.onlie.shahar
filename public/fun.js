@@ -52,7 +52,7 @@ export function initFun(C) {
     if (tab === 'gift') return `<b>🎁 Qo'shni yoki do'stingizga sovg'a yuboring</b><input id="gto" placeholder="Kimga? nik, masalan: ali_99"><input id="gmsg" maxlength="120" placeholder="Tilak (ixtiyoriy): Hayit muborak!">
       <div class="picks gpicks">${Object.entries(f.gifts).map(([k, v]) => `<button class="pick" data-gk="${k}">${v.n}<small>${money(v.p)}</small></button>`).join('')}</div>
       <b>📥 Sizga kelgan sovg'alar (${f.giftsIn.length})</b>${f.giftsIn.map((g) => `<div class="offer"><span>${g.n} — <b>@${esc(g.from)}</b>${g.msg ? `: «${esc(g.msg)}»` : ''}</span><button class="ghost" data-gback="${esc(g.from)}">🎁 Javob</button></div>`).join('') || '<div class="muted">Hali sovg\'a yo\'q. Siz birinchi bo\'lib yuboring — javob keladi 😊</div>'}`;
-    if (tab === 'mem') return `<div class="wallet">📜 <b>Mahallam xotirasi</b> — mahallangiz haqida eski rasm, xotira, bobolaringiz hikoyasini qoldiring. U xaritada shu joyda turadi.${myRes() ? '<br><small>Birinchi xotirangiz uchun +10 000 so\'m</small>' : ''}</div>
+    if (tab === 'mem') return `<div class="wallet">📜 <b>Mahallam xotirasi</b> — mahallangiz haqida eski rasm, xotira, bobolaringiz hikoyasini qoldiring. U xaritada shu joyda turadi.${myRes() ? '<br><small>Birinchi xotirangiz uchun +1 000 so\'m</small>' : ''}</div>
       ${myRes() ? '<button class="ok big" id="madd">➕ Xotira qo\'shish</button>' : ''}
       ${[...pub.memories].reverse().slice(0, 40).map((m) => `<div class="mcard" data-mo="${m.id}">${m.img ? `<img src="${esc(m.img)}" loading="lazy">` : '<div class="mph">📜</div>'}<div><b>${esc(m.title)}</b><div class="muted">@${esc(m.from)}${m.year ? ' · ' + esc(m.year) : ''}${m.mahalla ? ' · ' + esc(m.mahalla) : ''} · ❤️ ${m.likes}</div></div></div>`).join('') || '<div class="muted">Hali xotira yo\'q — birinchi bo\'ling!</div>'}`;
     if (tab === 'city') { const c = f.city, g = c.goals[c.done], prev = c.done ? c.goals[c.done - 1].n : 0;
@@ -61,7 +61,7 @@ export function initFun(C) {
       ${c.goals.map((x, i) => `<div class="muted">${i < c.done ? '✅' : '⬜'} ${x.t} — ${x.n.toLocaleString('ru')} ta</div>`).join('')}
       <button class="ok big" id="cplant">🌱 Daraxt ekish ${c.freeToday ? '(bugun bepul!)' : '— ' + money(3000)}</button><div class="muted">Siz ekdingiz: <b>${c.mine}</b> ta. Daraxtingiz uyingiz atrofida o'sadi.</div>`; }
     if (tab === 'hist') { const list = fs ? fs.history : Object.entries(pub.history).map(([k, v]) => ({ k, ...v })), got = list.filter((x) => x.got).length;
-      return `<div class="wallet">🏛️ <b>Shahrisabz tarixi kolleksiyasi</b>: ${got}/${list.length}<br><small>Har bir tarixiy joyga xaritada boring va kartochkani oling (+5 000). Hammasini yig'sangiz: <b>+100 000</b>!</small></div>
+      return `<div class="wallet">🏛️ <b>Shahrisabz tarixi kolleksiyasi</b>: ${got}/${list.length}<br><small>Har bir tarixiy joyga xaritada boring va kartochkani oling (+300). Hammasini yig'sangiz: <b>+8 000</b>!</small></div>
       ${list.map((h) => `<div class="hcard ${h.got ? 'got' : ''}"><div><b>${h.got ? '🃏' : '❔'} ${esc(h.n)}</b> <small class="muted">${esc(h.y)}</small><div class="muted">${h.got ? esc(h.f) : 'Kartochkani olish uchun joyga boring'}</div></div><button class="ghost" data-hgo="${h.k}">📍 Borish</button></div>`).join('')}<div class="muted">Joylashuvlar taxminiy.</div>`; }
     if (tab === 'play') return `<div class="wallet">🕹️ O'ynab pul ishlang! Bugun mukofotli o'yinlar: <b>${f.games.left}</b> ta (har biri ${money(f.games.max)} gacha)</div>
       <div class="games"><button class="gamebtn" data-gm="quiz">🧠<b>Shahrisabz viktorinasi</b><small>Shahringizni qanchalik bilasiz?</small></button>
@@ -108,7 +108,7 @@ export function initFun(C) {
     const h = pub.history[k]; if (!h) return; const [x, z] = toXZ(h.lat, h.lon), near = Math.hypot(controls.target.x - x, controls.target.z - z) < 400;
     if (myRes() && !fs) await load(); const got = fs?.history.find((y) => y.k === k)?.got;
     modal(`<h3>🏛️ ${esc(h.n)}</h3><div class="muted">📅 ${esc(h.y)}</div><div class="hcard got"><div>${esc(h.f)}</div></div>
-      ${myRes() ? (got ? '<div class="hint">🃏 Bu kartochka kolleksiyangizda bor</div>' : near ? '<button class="ok big" id="hget">🃏 Kartochkani olish: +5 000</button>' : '<button class="ghost big" id="hgo">📍 Joyiga borish (kartochka u yerda)</button>') : '<div class="hint">Kartochka yig\'ish uchun saytga kiring</div>'}
+      ${myRes() ? (got ? '<div class="hint">🃏 Bu kartochka kolleksiyangizda bor</div>' : near ? '<button class="ok big" id="hget">🃏 Kartochkani olish: +300</button>' : '<button class="ghost big" id="hgo">📍 Joyiga borish (kartochka u yerda)</button>') : '<div class="hint">Kartochka yig\'ish uchun saytga kiring</div>'}
       <button class="ghost" id="nope">Yopish</button>`);
     $('nope').onclick = closeModal;
     if ($('hgo')) $('hgo').onclick = () => { closeModal(); flyTo(x, z, 120); setTimeout(() => openHistory(k), 2600); };
