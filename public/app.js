@@ -933,8 +933,10 @@ function showPreview(el, style, color) {
   el.prepend(pvR.domElement); const w = el.clientWidth || 300, h = Math.round(Math.min(220, w * .6)); pvR.setSize(w, h); pvCam.aspect = w / h; pvCam.updateProjectionMatrix();
   if (pvObj) pvScene.remove(pvObj);
   const g = new THREE.Group(); try { buildStyle(g, style, color ? new THREE.Color(color) : hsl(20)); } catch {}
-  const bx = new THREE.Box3().setFromObject(g), sz = bx.getSize(new THREE.Vector3()); const sp = bx.getBoundingSphere(new THREE.Sphere()), vf = THREE.MathUtils.degToRad(pvCam.fov) / 2, hf = Math.atan(Math.tan(vf) * pvCam.aspect);
-  g.userData.box = { d: sp.radius / Math.sin(Math.min(vf, hf)) * 1.05, cy: sp.center.y }; pvCam.far = sp.radius * 10;  pvCam.updateProjectionMatrix();
+  g.updateMatrixWorld(true); const bx = new THREE.Box3(), tb = new THREE.Box3(), ts = new THREE.Vector3();
+  g.traverse((o) => { if (!o.isMesh || o.isInstancedMesh || !o.geometry) return; o.geometry.computeBoundingBox(); tb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); tb.getSize(ts); if (Math.max(ts.x, ts.z) > 120 && ts.y < 2) return; bx.union(tb); }); // juda katta yassi qismlar (yer, soya) hisobga olinmaydi
+  if (bx.isEmpty()) bx.set(new THREE.Vector3(-10, 0, -10), new THREE.Vector3(10, 10, 10)); const sp = bx.getBoundingSphere(new THREE.Sphere()), vf = THREE.MathUtils.degToRad(pvCam.fov) / 2, hf = Math.atan(Math.tan(vf) * pvCam.aspect);
+  g.userData.box = { d: sp.radius / Math.sin(Math.min(vf, hf)) * .78, cy: sp.center.y }; pvCam.far = sp.radius * 10;  pvCam.updateProjectionMatrix();
   pvObj = g; pvScene.add(g);
 }
 function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); }

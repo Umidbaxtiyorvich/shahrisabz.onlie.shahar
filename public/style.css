@@ -88,5 +88,6 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
   button{font-size:13px}
   .carrow{flex-wrap:wrap}
 }
-.pv{position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(#cfe6ff,#eef6e4);min-height:120px}.pv canvas{display:block;width:100%;cursor:grab}
+.pv{flex:none;position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(#cfe6ff,#eef6e4);min-height:120px}.pv canvas{display:block;width:100%;cursor:grab}
 .pvcap{position:absolute;left:8px;bottom:6px;background:rgba(255,255,255,.85);border-radius:10px;padding:4px 8px;font-size:13px}
+.box>*{flex-shrink:0}
