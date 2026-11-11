@@ -785,8 +785,9 @@ HOUSE_BUILDERS.mega = function (g, c) {
 };
 const STYLE_NAMES_EXTRA = {};
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
-for (const c of 'abcdefghijklmnopqrstu') STYLE_NAMES['uy_' + c] = '🏡 Uy ' + c.toUpperCase();
-for (const c of MB) STYLE_NAMES['mb_' + c] = (c.startsWith('t') ? '🏢 Minora ' : '🧱 G\'isht uy ') + c.slice(-1).toUpperCase();
+const UY_NAMES = ["Ikki tomli hovli uy", "Quyosh panelli uy", "Ikki qavatli oilaviy uy", "Mo'rili ikki qavatli uy", "Katta ikki qavatli uy", "Keng tomli uy", "Bir qavatli shinam uy", "Uzun bir qavatli uy", "Bir qavatli kottej", "Mo'rili kottej", "Qiya tomli zamonaviy uy", "Qora-oq zamonaviy uy", "Burchakli bir qavatli uy", "Ayvonli ikki qavatli uy", "Terassali uy", "Tekis tomli villa", "Ayvonli zamonaviy villa", "Gulzorli ikki qavatli uy", "Ayvonli qishloq uyi", "Uch qavatli katta uy", "Terassali kichik uy"];
+'abcdefghijklmnopqrstu'.split('').forEach((c, i) => { STYLE_NAMES['uy_' + c] = '🏡 ' + UY_NAMES[i]; });
+Object.assign(STYLE_NAMES, { 'mb_house-a': "🧱 Bir qavatli g'isht uy", 'mb_house-b': "🧱 Ikki qavatli g'isht uy", 'mb_house-c': "🧱 Balkonli g'isht uy", 'mb_tower-a': '🏢 Ayvonli 4 qavatli bino', 'mb_tower-b': '🏢 Balkonli 3 qavatli bino', 'mb_tower-c': "🏢 Do'konli 4 qavatli bino", 'mb_tower-d': '🏢 5 qavatli turar-joy' });
 STYLE_NAMES.mega = '👑 Mega-bino';
 const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
 // ---- 💳 Balansni to'ldirish ----
@@ -890,6 +891,7 @@ function openDesigner(plot, startTab) {
     const cars = plot ? [] : (r.cars || []);
     modal(`<h3>${unbuilt ? '🏗️ Uy qurish' : '🎨'} ${plot ? esc(plot.name || (isHouse ? plot.n + '-uy' : '')) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b>${unbuilt ? `<br>🏗️ Qurilish: <b>${money(sh.build)}</b> + tanlangan dizayn narxi` : ''}</div>
       <div class="tabs">${[['h', '🏠 Uy dizayni'], ['b', '🏪 Bino turlari'], ...(plot ? [] : [['c', `🚗 Mashinalar (${cars.length})`]])].map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>
+      ${tab !== 'c' ? `<div class="pv" id="pv"><div class="pvcap"><b>${esc(styleName(sel.style))}</b> · ${(() => { const p = stylePriceC(sel.style, sh); return p ? money(p) : 'bepul'; })()}<br><small>🔄 aylantirib ko'ring</small></div></div>` : ''}
       ${tab === 'h' ? `<div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : v ? money(v) : (unbuilt ? '+0' : 'bepul')}</small></button>`).join('')}</div>` : ''}
       ${tab === 'b' ? `<span class="muted">Uyingizni yoki joyingizni do'kon, bozor, kafe… ga aylantiring</span><div class="picks">${Object.entries(sh.buildings || {}).map(([k, v]) => `<button class="pick ${sel.style === 'b:' + k ? 'on' : ''}" data-s="b:${esc(k)}">${esc(v.i)} ${esc(v.n)}<small>${'b:' + k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : money(v.p)}</small></button>`).join('')}</div>` : ''}
       ${tab !== 'c' ? `${String(sel.style).startsWith('b:') ? `<label>Bino nomi (peshlavhada)<input id="bname" maxlength="40" value="${esc(cur.bname || '')}" placeholder="masalan: Umid market"></label>` : ''}
@@ -902,6 +904,7 @@ function openDesigner(plot, startTab) {
       <div class="muted">🏎️ Sport — haqiqiy 3D model (yaqinlashganda ko'rinadi). Uy oldiga 12 tagacha mashina sig'adi.</div>`}
       <button class="ghost" id="nope">Yopish</button>`);
     document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { const keep = $('bname')?.value; sel.style = b.dataset.s; sel.color = $('hcol').value; if (keep !== undefined) cur.bname = keep; render(); }));
+    if ($('pv')) showPreview($('pv'), sel.style, $('hcol')?.value);
     document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; render(); }));
     $('nope').onclick = closeModal;
     const go = async (body, msg) => { try { const j = await upgrade(body); toast(`${msg}${j.cost ? ' · −' + money(j.cost) : ''}`); render(); } catch (e) { alert(e.message); } };
@@ -914,6 +917,24 @@ function openDesigner(plot, startTab) {
     }
   };
   render();
+}
+// 🔍 Sotib olishdan oldin 3D ko'rinish (alohida kichik sahna, aylanib turadi, sichqoncha/barmoq bilan buriladi)
+let pvR = null, pvScene = null, pvCam = null, pvObj = null, pvAng = .6, pvDrag = null;
+function showPreview(el, style, color) {
+  if (!pvR) {
+    pvR = new THREE.WebGLRenderer({ antialias: true, alpha: true }); pvR.setPixelRatio(Math.min(devicePixelRatio, 2)); pvR.toneMapping = THREE.ACESFilmicToneMapping; pvR.outputColorSpace = THREE.SRGBColorSpace;
+    pvScene = new THREE.Scene(); pvScene.environment = scene.environment; pvScene.add(new THREE.HemisphereLight(0xffffff, 0x8a9a70, 1.6)); const d = new THREE.DirectionalLight(0xfff1dc, 2.4); d.position.set(40, 80, 60); pvScene.add(d);
+    pvCam = new THREE.PerspectiveCamera(35, 1, .5, 5000);
+    const c = pvR.domElement; c.style.touchAction = 'none';
+    c.onpointerdown = (e) => (pvDrag = e.clientX); addEventListener('pointerup', () => (pvDrag = null)); c.onpointermove = (e) => { if (pvDrag !== null) { pvAng -= (e.clientX - pvDrag) * .01; pvDrag = e.clientX; } };
+    (function spin() { requestAnimationFrame(spin); const c = pvR.domElement; if (!c.isConnected || !pvObj) return; if (pvDrag === null) pvAng += .006;
+      const b = pvObj.userData.box, R = b.r; pvCam.position.set(Math.sin(pvAng) * R * 1.9, R * .9 + b.h * .2, Math.cos(pvAng) * R * 1.9); pvCam.lookAt(0, b.h * .35, 0); pvR.render(pvScene, pvCam); })();
+  }
+  el.prepend(pvR.domElement); const w = el.clientWidth || 300, h = Math.round(Math.min(220, w * .6)); pvR.setSize(w, h); pvCam.aspect = w / h; pvCam.updateProjectionMatrix();
+  if (pvObj) pvScene.remove(pvObj);
+  const g = new THREE.Group(); try { buildStyle(g, style, color ? new THREE.Color(color) : hsl(20)); } catch {}
+  const bx = new THREE.Box3().setFromObject(g), sz = bx.getSize(new THREE.Vector3()); g.userData.box = { r: Math.max(18, Math.max(sz.x, sz.z) * .75, sz.y * .6), h: sz.y };
+  pvObj = g; pvScene.add(g);
 }
 function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); }
 // Boshqa odamning uyi: manzil, narxlar, mashinalar, joylar, yozish
