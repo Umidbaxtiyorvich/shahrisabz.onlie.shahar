@@ -8,7 +8,7 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
 import { initLife } from './life.js?v=9';
-import * as K from './kenney.js?v=5';
+import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
@@ -28,7 +28,8 @@ const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } cat
 
 // ---- Sahna ----
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MOBILE = innerWidth < 800 || /Mobi|Android/i.test(navigator.userAgent);
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 
 $('app').appendChild(renderer.domElement);
@@ -247,7 +248,7 @@ function buildRoads(data) {
   if (kt.length) { // Kenney daraxtlari: har turi uchun alohida instanced mesh, joylar navbat bilan bo'linadi
     const qt = ['q-tree-a', 'q-tree-b', 'n-tree-avoxahrpwe', 'n-tree-qvoop92wmg', 'q-pine', 'n-pine-zt62gcekxz'].map((n) => K.parts(n, 7)).filter(Boolean);
     spots.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
-    const nearSpots = qt.length ? spots.splice(0, 700) : []; // markaz atrofida — haqiqiyroq Quaternius daraxtlari
+    const nearSpots = qt.length ? spots.splice(0, MOBILE ? 120 : 350) : []; // markaz atrofida — haqiqiyroq Quaternius daraxtlari
     if (qt.length) { const qg = qt.map(() => []); nearSpots.forEach((sp, i) => qg[i % qt.length].push(sp));
       qt.forEach((prts, k) => { const pts = qg[k]; if (!pts.length) return; for (const pr of prts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = true;
         pts.forEach(([x, z], i) => { const sc2 = rnd(.9, 1.3); mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 2.399) % 6.28), sc.set(sc2, sc2, sc2)); im.setMatrixAt(i, mtx); }); scene.add(im); } }); }
@@ -259,7 +260,7 @@ function buildRoads(data) {
         pts.forEach(([x, z], i) => { const sc2 = rnd(.85, 1.25); mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 2.399) % 6.28), sc.set(sc2, sc2, sc2)); im.setMatrixAt(i, mtx); });
         scene.add(im); } });
   } else { crowns.castShadow = trunks.castShadow = true; scene.add(crowns, trunks); }
-  scatterNature();
+  K.ready2.then(scatterNature);
 }
 // Tabiat (fps-buildings-env-kit, Quaternius CC0): ko'cha chetlari va bo'sh joylarda o't, gul, buta, paporotnik, tosh
 function scatterNature() {
@@ -273,7 +274,8 @@ function scatterNature() {
   for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   let k0 = 0;
-  for (const [name, w, n] of kinds) { const prts = K.parts(name, w); const pts = spots.slice(k0, k0 + n); k0 += n; if (!prts || !pts.length) continue;
+  const kf = MOBILE ? .3 : .6;
+  for (const [name, w, n0] of kinds) { const n = Math.round(n0 * kf); const prts = K.parts(name, w); const pts = spots.slice(k0, k0 + n); k0 += n; if (!prts || !pts.length) continue;
     for (const pr of prts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = w > 2; im.receiveShadow = true;
       pts.forEach(([x, z], i) => { const s2 = .7 + rr() * .7; mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(Y, rr() * 6.28), sc.set(s2, s2, s2)); im.setMatrixAt(i, mtx); }); scene.add(im); } }
 }
@@ -833,14 +835,14 @@ async function openMyPanel() {
     <div class="wallet row" style="justify-content:space-between;align-items:center"><span>💰 Hamyon: <b>${money(wallet.balance)}</b></span><button class="ok" id="ptop">💳 To'ldirish</button></div>
     ${wallet.homeless ? '<div class="hint" style="background:#fff3e0;padding:8px;border-radius:10px">🏚️ Asosiy uyingizni sotgansiz. Yangi joy sotib olib, unda pulga uy qurishingiz mumkin.</div>' : ''}
     ${wallet.offersIn.length ? '<b>🤝 Sizga kelgan takliflar</b>' + wallet.offersIn.map((o) => `<div class="offer"><div>@${esc(o.initiator === 'buyer' ? o.buyer : o.seller)} — <b>${esc(o.title)}</b> uchun <b>${money(o.price)}</b> ${o.initiator === 'buyer' ? (o.buyerCanPay ? '<span class="okc">✓ puli yetarli</span>' : '<span class="noc">✗ puli yetmaydi</span>') : ''}</div><div class="row"><button class="ok" data-acc="${o.id}">${o.initiator === 'buyer' ? '✅ Sotildi' : '✅ Sotib olaman'}</button><button class="no" data-rej="${o.id}">Rad etish</button></div></div>`).join('') : ''}
-    <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy va mashina</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button><button class="ghost" id="ppass">🔑 Parol</button></div>
+    <div class="row"><button id="pdes" ${wallet.homeless ? 'disabled' : ''}>🎨 Uy dizayni</button><button id="pcar" ${wallet.homeless ? 'disabled' : ''}>🚗 Mashinalar</button><button id="pmove" ${wallet.homeless ? 'disabled' : ''}>🚚 Ko'chish</button><button id="pbuy">📐 Joy sotib olish</button><button class="ghost" id="ppass">🔑 Parol</button></div>
     <b>🏘️ Mening mulklarim</b>
     ${assets.map((a, i) => `<div class="offer"><div><b>${esc(a.title)}</b><div class="muted">📍 ${esc(addr(a.o))}</div></div><div class="row"><button class="ghost" data-fly="${i}">🔍</button><button class="ghost" data-ed="${i}">✏️ Manzil</button><button class="ghost" data-ds="${i}">🎨</button></div></div>`).join('') || '<div class="muted">Mulk yo\'q</div>'}
     ${wallet.offersOut.length ? `<details><summary class="muted">Mening takliflarim (${wallet.offersOut.length})</summary>${wallet.offersOut.map((o) => `<div class="muted">${fmtT(o.at)} · ${esc(o.title)} · ${money(o.price)} · ${o.initiator === 'buyer' ? '@' + esc(o.seller) + ' ga taklif' : '@' + esc(o.buyer) + ' ga sotish'} · ${ST_OFFER[o.status] || esc(o.status)} ${o.status === 'pending' ? `<a href="#" data-cnc="${o.id}">bekor qilish</a>` : ''}</div>`).join('')}</details>` : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
     <button class="ghost" id="nope">Yopish</button>`);
   $('ptop').onclick = openTopup; $('ppass').onclick = askNewPass;
-  $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
+  $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pcar').onclick = () => openDesigner(null, 'c'); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
   document.querySelectorAll('[data-fly]').forEach((b) => (b.onclick = () => { const a = assets[b.dataset.fly]; closeModal(); flyTo(a.x, a.z, 70); }));
   document.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => assets[b.dataset.ds].design()));
   document.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => openEditAddr(assets[b.dataset.ed])));
@@ -881,29 +883,31 @@ function openAssetInfo(t) {
 }
 const hex = (o, d = '#e9d8b4') => o?.colorHex || (o?.color !== undefined ? '#' + hsl(o.color).getHexString() : d);
 async function upgrade(body) { const j = await api('/api/upgrade', { ...me, ...body }); await refresh(); await loadWallet(); return j; }
-function openDesigner(plot) {
+function openDesigner(plot, startTab) {
   const r = myRes(), sh = wallet.shop, cur = plot || r, isHouse = !!plot?.isHouse, unbuilt = plot && !isHouse && plot.built === false;
-  let sel = { style: cur.style || 'oddiy', color: hex(cur) };
+  let sel = { style: cur.style || 'oddiy', color: hex(cur) }, tab = startTab || (String(sel.style).startsWith('b:') ? 'b' : 'h');
   const render = () => {
     const cars = plot ? [] : (r.cars || []);
     modal(`<h3>${unbuilt ? '🏗️ Uy qurish' : '🎨'} ${plot ? esc(plot.name || (isHouse ? plot.n + '-uy' : '')) : 'Uyim'}</h3><div class="wallet">💰 Hamyon: <b>${money(wallet.balance)}</b>${unbuilt ? `<br>🏗️ Qurilish: <b>${money(sh.build)}</b> + tanlangan dizayn narxi` : ''}</div>
-      <b>🏠 Dizayn</b><div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : v ? money(v) : (unbuilt ? '+0' : 'bepul')}</small></button>`).join('')}</div>
-      <b>🏪 Bino turlari</b> <span class="muted">(uyingizni yoki joyingizni do'kon, bozor, kafe… ga aylantiring)</span><div class="picks bpicks">${Object.entries(sh.buildings || {}).map(([k, v]) => `<button class="pick ${sel.style === 'b:' + k ? 'on' : ''}" data-s="b:${esc(k)}">${esc(v.i)} ${esc(v.n)}<small>${'b:' + k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : money(v.p)}</small></button>`).join('')}</div>
-      ${String(sel.style).startsWith('b:') ? `<label>Bino nomi (peshlavhada)<input id="bname" maxlength="40" value="${esc(cur.bname || '')}" placeholder="masalan: Umid market"></label>` : ''}
+      <div class="tabs">${[['h', '🏠 Uy dizayni'], ['b', '🏪 Bino turlari'], ...(plot ? [] : [['c', `🚗 Mashinalar (${cars.length})`]])].map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>
+      ${tab === 'h' ? `<div class="picks">${Object.entries(sh.houses).map(([k, v]) => `<button class="pick ${sel.style === k ? 'on' : ''}" data-s="${esc(k)}">${STYLE_NAMES[k] || esc(k)}<small>${k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : v ? money(v) : (unbuilt ? '+0' : 'bepul')}</small></button>`).join('')}</div>` : ''}
+      ${tab === 'b' ? `<span class="muted">Uyingizni yoki joyingizni do'kon, bozor, kafe… ga aylantiring</span><div class="picks">${Object.entries(sh.buildings || {}).map(([k, v]) => `<button class="pick ${sel.style === 'b:' + k ? 'on' : ''}" data-s="b:${esc(k)}">${esc(v.i)} ${esc(v.n)}<small>${'b:' + k === (cur.style || 'oddiy') && !unbuilt ? '✓ hozirgi' : money(v.p)}</small></button>`).join('')}</div>` : ''}
+      ${tab !== 'c' ? `${String(sel.style).startsWith('b:') ? `<label>Bino nomi (peshlavhada)<input id="bname" maxlength="40" value="${esc(cur.bname || '')}" placeholder="masalan: Umid market"></label>` : ''}
       <div class="row" style="align-items:center"><label class="clr">🎨 Rang <input type="color" id="hcol" value="${sel.color}"></label><span class="muted">rang o'zgartirish: ${money(sh.repaint)}</span></div>
-      <button class="ok" id="dbuy">Saqlash</button>
-      ${plot ? '' : `<hr><b>🚗 Mashinalarim (${cars.length})</b>
-      ${cars.map((c, i) => `<div class="carrow"><span>${CAR_NAMES[c.t] || esc(c.t)}</span><input type="color" value="${esc(c.c)}" data-ci="${i}"><button class="ghost" data-cr="${i}">Rangni saqlash</button><button class="no" data-cx="${i}">✕</button></div>`).join('') || '<div class="muted">Hali mashina yo\'q</div>'}
-      <b>➕ Yangi mashina sotib olish</b>
+      <button class="ok" id="dbuy">Saqlash</button>` : ''}
+      ${plot || tab !== 'c' ? '' : `<b>➕ Yangi mashina sotib olish</b>
       <div class="row" style="align-items:center"><select id="ncar">${Object.entries(sh.cars).filter(([k]) => k !== 'yoq').map(([k, v]) => `<option value="${esc(k)}">${CAR_NAMES[k] || esc(k)} — ${money(v)}</option>`).join('')}</select><label class="clr">Rangi <input type="color" id="ncol" value="#c0392b"></label><button class="ok" id="nbuy">Sotib olish</button></div>
+      <hr><b>🚗 Mashinalarim (${cars.length})</b>
+      ${cars.map((c, i) => `<div class="carrow"><span>${CAR_NAMES[c.t] || esc(c.t)}</span><input type="color" value="${esc(c.c)}" data-ci="${i}"><button class="ghost" data-cr="${i}">Rangni saqlash</button><button class="no" data-cx="${i}">✕</button></div>`).join('') || '<div class="muted">Hali mashina yo\'q</div>'}
       <div class="muted">🏎️ Sport — haqiqiy 3D model (yaqinlashganda ko'rinadi). Uy oldiga 12 tagacha mashina sig'adi.</div>`}
       <button class="ghost" id="nope">Yopish</button>`);
     document.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { const keep = $('bname')?.value; sel.style = b.dataset.s; sel.color = $('hcol').value; if (keep !== undefined) cur.bname = keep; render(); }));
+    document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; render(); }));
     $('nope').onclick = closeModal;
     const go = async (body, msg) => { try { const j = await upgrade(body); toast(`${msg}${j.cost ? ' · −' + money(j.cost) : ''}`); render(); } catch (e) { alert(e.message); } };
     const bn = () => ($('bname') ? { bname: $('bname').value } : {});
-    $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value, ...bn() } : { plotId: plot?.id, style: sel.style, color: $('hcol').value, ...bn() }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
-    if (!plot) {
+    if ($('dbuy')) $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value, ...bn() } : { plotId: plot?.id, style: sel.style, color: $('hcol').value, ...bn() }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
+    if (!plot && tab === 'c') {
       $('nbuy').onclick = () => go({ buyCar: { t: $('ncar').value, c: $('ncol').value } }, '🚗 Mashina uyingiz oldida!');
       document.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = () => go({ recolorCar: { i: +b.dataset.cr, c: document.querySelector(`[data-ci="${b.dataset.cr}"]`).value } }, '🎨 Rang o\'zgardi')));
       document.querySelectorAll('[data-cx]').forEach((b) => (b.onclick = () => confirm('Bu mashinani olib tashlaysizmi? (pul qaytmaydi)') && go({ removeCar: +b.dataset.cx }, 'Olib tashlandi')));

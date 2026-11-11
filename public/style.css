@@ -67,3 +67,24 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 
 .wclock{font-size:13px;margin-top:4px;color:#1d2b53}
 .gcard{display:flex;flex-direction:column;gap:3px;min-width:200px}.gfrom{font-size:12px;font-weight:700;color:#1e66d0;text-decoration:none;display:block}
+
+/* ---- Tartib: oynalar, bo'limlar (telefon + kompyuter) ---- */
+.box{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;max-width:520px}
+.tabs{display:flex;gap:4px;background:#eef2f8;border-radius:12px;padding:4px;position:sticky;top:-10px;z-index:2}
+.tab{flex:1;background:transparent;color:#334;padding:8px 6px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.on{background:#fff;color:#2f7cf6;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.picks{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));max-height:46vh;overflow-y:auto;overflow-x:hidden;padding:2px}
+.pick{min-width:0;white-space:normal;text-align:left;line-height:1.25}.pick small{white-space:nowrap}
+.bottom .card .row button{flex:1 1 auto}
+@media (max-width:600px){
+  .modal{align-items:flex-end;padding:0}
+  .box{max-width:100%;border-radius:18px 18px 0 0;max-height:88dvh;padding:12px}
+  .picks{grid-template-columns:repeat(2,minmax(0,1fr));max-height:42vh}
+  .top{top:8px;left:8px;right:8px;gap:6px}.title b{font-size:16px}.search{min-width:0;max-width:none;flex-basis:100%}
+  .bottom{bottom:8px;left:8px;right:8px}
+  .bottom .card{padding:8px 10px;gap:6px}
+  .bottom .card .row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .bottom .card .row button{font-size:12px;padding:8px 4px;overflow:hidden;text-overflow:ellipsis}
+  button{font-size:13px}
+  .carrow{flex-wrap:wrap}
+}

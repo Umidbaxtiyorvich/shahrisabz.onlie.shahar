@@ -27,7 +27,9 @@ function load(name) {
   }, undefined, () => ok(false)));
 }
 // Avval shahar uchun eng kerakli modellar, keyin qolganlari
-export const ready = Promise.all([...SUBURBAN, ...COMMERCIAL, ...CARS, ...TREES, ...QTREES, ...NATURE, ...MODULAR, ...PROPS].map(load)).then((r) => r.filter(Boolean).length);
+export const ready = Promise.all([...SUBURBAN, ...COMMERCIAL, ...CARS, ...TREES, ...QTREES, ...MODULAR, ...PROPS].map(load)).then((r) => r.filter(Boolean).length);
+// og'ir tabiat modellari — xarita ochilgandan keyin
+export const ready2 = ready.then(() => Promise.all(NATURE.map(load)));
 export const has = (name) => models.has(name);
 
 // Modelni nusxalab, eni (x/z bo'yicha kattasi) `width` metr bo'ladigan qilib, yerga (y=0) va markazga qo'yadi
