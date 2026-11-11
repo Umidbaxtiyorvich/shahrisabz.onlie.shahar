@@ -91,3 +91,13 @@ hr{border:0;border-top:1px solid #e3e8f0;width:100%}
 .pv{flex:none;position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(#cfe6ff,#eef6e4);min-height:120px}.pv canvas{display:block;width:100%;cursor:grab}
 .pvcap{position:absolute;left:8px;bottom:6px;background:rgba(255,255,255,.85);border-radius:10px;padding:4px 8px;font-size:13px}
 .box>*{flex-shrink:0}
+/* 🎮 O'yin */
+button.big{padding:12px;font-size:15px;width:100%}
+.easset{background:#f6f8fc;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.lvl{background:#fff4d6;color:#a26a00;border-radius:8px;padding:1px 7px;font-size:12px;font-weight:700}
+.ebar{height:8px;background:#e3e8f0;border-radius:6px;overflow:hidden}.ebar i{display:block;height:100%;background:linear-gradient(90deg,#1fa463,#9bd35a)}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.day{background:#f1f4f9;border-radius:10px;padding:6px 2px;text-align:center;display:flex;flex-direction:column;font-size:12px}.day b{font-size:11px}
+.day.done{background:#d9f3e3;color:#13804a}.day.now{background:#fff1c9;outline:2px solid #f5b400}
+.trow{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:10px}.trow:nth-child(odd){background:#f6f8fc}.trow.me{background:#e8f0ff}
+.trow .ava{width:30px;height:30px}.tn{width:24px;text-align:center;font-weight:700}.tu{flex:1;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis}

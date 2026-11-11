@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=11';
+import { initLife } from './life.js?v=12';
 import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 
@@ -63,20 +63,20 @@ TEX.grass.repeat.set(1500, 1500);
 const texLoader = new THREE.TextureLoader();
 function pbr(name, rx, ry = rx) { const load = (f, srgb) => { const t = texLoader.load(`./textures/pbr/${name}_${f}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = maxAniso; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; }; return { map: load('color', true), normalMap: load('normal', false) }; }
 // Osmon: fizik atmosfera modeli (quyosh, ufq, havo rangi)
-const sky = new Sky(); sky.scale.setScalar(30000); scene.add(sky);
+const sky = new Sky(); sky.scale.setScalar(80000); scene.add(sky);
 Object.assign(sky.material.uniforms, {}); sky.material.uniforms.turbidity.value = 6; sky.material.uniforms.rayleigh.value = 1.6; sky.material.uniforms.mieCoefficient.value = .004; sky.material.uniforms.mieDirectionalG.value = .85;
 const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(58), THREE.MathUtils.degToRad(200));
 sky.material.uniforms.sunPosition.value.copy(sunDir);
-scene.fog = new THREE.Fog(0xc9d6e2, 2500, 12000);
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 40000);
+scene.fog = new THREE.Fog(0xc9d6e2, 4000, 30000);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 90000);
 camera.position.set(0, 900, 620);
 const controls = new MapControls(camera, renderer.domElement);
-controls.maxPolarAngle = 1.35; controls.minDistance = 30; controls.maxDistance = 7000;
+controls.maxPolarAngle = 1.35; controls.minDistance = 30; controls.maxDistance = 22000;
 controls.enableDamping = true;
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b7a4a, 1.5); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.2); sun.position.copy(sunDir).multiplyScalar(200); let life = null; const allWays = []; scene.add(sun); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 500 }); sun.shadow.bias = -.0005;
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({ ...pbr('grass', 3750), normalScale: new THREE.Vector2(.6, .6), roughness: 1, color: 0xd8f0b0 })); // 8 m plitka
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000), new THREE.MeshStandardMaterial({ ...pbr('grass', 11250), normalScale: new THREE.Vector2(.6, .6), roughness: 1, color: 0xd8f0b0 })); // 8 m plitka
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 // bulutlar
 for (let i = 0; i < 18; i++) {
@@ -1168,6 +1168,54 @@ function openGroup() {
   };
 }
 $('group').onclick = openGroup;
+
+// ---- 🎮 O'yin: binolar daromadi, kunlik bonus, reyting, do'st taklifi ----
+try { const rf = new URLSearchParams(location.search).get('ref'); if (rf) store.set('ref', rf.replace(/^@/, '')); } catch {}
+let econ = null, gameTab = 'inc';
+async function loadEcon() { if (!myRes()) return null; try { econ = await api('/api/econ/state', me); } catch { econ = null; } updGameBadge(); return econ; }
+function updGameBadge() {
+  const b = $('gbadge'); if (!b || !econ) return; const sum = econ.assets.reduce((a, x) => a + x.ready, 0), n = (econ.daily.claimed ? 0 : 1) + econ.assets.filter((x) => x.full).length;
+  b.textContent = n ? n : sum > 0 ? '💰' : ''; b.classList.toggle('hidden', !n && !(sum > 0));
+}
+const bar = (pct) => `<div class="ebar"><i style="width:${Math.min(100, pct)}%"></i></div>`;
+async function openGame(tab) {
+  if (!myRes()) return alert("O'ynash uchun saytga kiring");
+  if (tab) gameTab = tab; await loadEcon(); if (!econ) return;
+  const e = econ, sum = e.assets.reduce((a, x) => a + x.ready, 0), rate = e.assets.reduce((a, x) => a + x.rate, 0);
+  let body = '';
+  if (gameTab === 'inc') body = `<div class="wallet">💰 Hamyon: <b>${money(e.balance)}</b><br><small>⏱️ Soatiga: <b>${money(rate)}</b> · har ${e.econ.capHours} soatda yig'ib oling, aks holda to'xtab qoladi</small></div>
+    <button class="ok big" id="gcol" ${sum > 0 ? '' : 'disabled'}>💰 Hammasini yig'ib olish${sum > 0 ? ': +' + money(sum) : ''}</button>
+    ${e.assets.map((a) => `<div class="easset"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(a.title)}</b><span class="lvl">⭐ ${a.lv}-daraja</span></div>
+      <div class="muted">${a.biz ? '🏪 Biznes' : '🏠 Ijara'} · soatiga ${money(a.rate)} · ${a.full ? '<b class="noc">to\'lib qoldi!</b>' : 'to\'ldi: ' + a.fillPct + '%'}</div>${bar(a.fillPct)}
+      <div class="row"><button class="ghost" data-ec="${esc(a.key)}" ${a.ready > 0 ? '' : 'disabled'}>💰 +${money(a.ready)}</button>${a.upCost ? `<button data-eu="${esc(a.key)}" ${e.balance >= a.upCost ? '' : 'disabled'}>⬆️ ${a.lv + 1}-daraja: ${money(a.upCost)} <small>(+${e.econ.levelBonus}%)</small></button>` : '<span class="muted">🏆 Eng yuqori daraja</span>'}</div></div>`).join('') || '<div class="muted">Mulkingiz yo\'q. Joy sotib olib bino quring — u sizga pul ishlab beradi.</div>'}
+    <div class="hint">💡 Biznes binolari (do'kon, kafe, mehmonxona…) oddiy uydan ko'ra 4 baravar ko'p daromad beradi. Uyingizni 🎨 Dizayn → 🏪 Bino turlari orqali biznesga aylantiring.</div>`;
+  if (gameTab === 'day') { const days = [...Array(7)].map((_, i) => Math.min(e.econ.dailyMax, e.econ.dailyBase + e.econ.dailyStep * i)), cur = e.daily.claimed ? e.daily.streak - 1 : e.daily.streak;
+    body = `<div class="wallet">🔥 Ketma-ket: <b>${e.daily.streak} kun</b><br><small>Har kuni kiring — bonus o'sib boradi. Bir kun o'tkazsangiz, boshidan boshlanadi.</small></div>
+    <div class="days">${days.map((v, i) => `<div class="day ${i < cur || (e.daily.claimed && i === cur) ? 'done' : i === cur ? 'now' : ''}"><small>${i + 1}-kun</small><b>${money(v).replace(" so'm", '')}</b></div>`).join('')}</div>
+    <button class="ok big" id="gday" ${e.daily.claimed ? 'disabled' : ''}>${e.daily.claimed ? '✅ Bugun olindi — ertaga keling' : '🎁 Bugungi bonusni olish: +' + money(e.daily.next)}</button>`; }
+  if (gameTab === 'top') { let t = { worth: [], level: [] }; try { t = await api('/api/econ/top', {}); } catch {}
+    const tbl = (l, f) => l.map((x, i) => `<div class="trow ${x.u === me.username ? 'me' : ''}"><span class="tn">${['🥇', '🥈', '🥉'][i] || i + 1}</span>${ava(x.u)}<b class="tu" data-gu2="${esc(x.u)}">@${esc(x.u)}</b><span>${f(x)}</span></div>`).join('');
+    body = `<b>💎 Eng boy aholi (mulk + hamyon)</b>${tbl(t.worth, (x) => money(x.w))}<b>⭐ Eng ko'p daraja</b>${tbl(t.level.slice(0, 10), (x) => x.lv + ' ⭐')}`; }
+  if (gameTab === 'ref') { const link = location.origin + '/?ref=' + encodeURIComponent(me.username);
+    body = `<div class="wallet">🤝 Do'stingizni taklif qiling: u qo'shilsa sizga <b>+${money(e.econ.refBonus)}</b>, unga <b>+${money(e.econ.refInvitee)}</b><br><small>Siz taklif qilganlar: <b>${e.refs}</b> ta</small></div>
+    <label>Sizning taklif havolangiz<input id="rlink" readonly value="${esc(link)}"></label><div class="row"><button id="rcopy">📋 Nusxa olish</button><a href="https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Shahrisabz online shaharda menga qo\'shil! 🏙️')}" target="_blank" rel="noopener"><button class="ghost">✈️ Telegram</button></a></div>
+    <div class="muted">Do'stingiz Instagramda @shahrisabz.online.shahar ga obuna bo'lib, uyi qurilgach saytga kiradi va sizning nikingizni yozadi.</div>
+    ${e.refBy ? `<div class="hint">✅ Sizni @${esc(e.refBy)} taklif qilgan</div>` : `<label>Sizni kim taklif qildi?<input id="rinv" placeholder="nik, masalan: ali_99" value="${esc(store.get('ref') || '')}"></label><button class="ok" id="rsend">Bonusni olish</button>`}`; }
+  modal(`<h3>🎮 Shahar o'yini</h3><div class="tabs">${[['inc', '💰 Daromad'], ['day', '🎁 Bonus'], ['top', '🏆 Reyting'], ['ref', "🤝 Do'st"]].map(([k, t]) => `<button class="tab ${gameTab === k ? 'on' : ''}" data-gt="${k}">${t}</button>`).join('')}</div>${body}<button class="ghost" id="nope">Yopish</button>`);
+  $('nope').onclick = closeModal;
+  document.querySelectorAll('[data-gt]').forEach((b) => (b.onclick = () => openGame(b.dataset.gt)));
+  const act = async (url, extra, msg) => { try { const j = await api(url, { ...me, ...extra }); econ = j; if (j.balance !== undefined) { $('bal').textContent = money(j.balance); wallet.balance = j.balance; } toast(msg(j)); openGame(); } catch (er) { alert(er.message); } };
+  if ($('gcol')) $('gcol').onclick = () => act('/api/econ/collect', {}, (j) => `💰 +${money(j.sum)} hamyoningizga tushdi!`);
+  document.querySelectorAll('[data-ec]').forEach((b) => (b.onclick = () => act('/api/econ/collect', { key: b.dataset.ec }, (j) => `💰 +${money(j.sum)}`)));
+  document.querySelectorAll('[data-eu]').forEach((b) => (b.onclick = () => act('/api/econ/upgrade', { key: b.dataset.eu }, () => '⬆️ Daraja oshdi — endi ko\'proq daromad!')));
+  if ($('gday')) $('gday').onclick = () => act('/api/econ/daily', {}, (j) => `🎁 +${money(j.bonus)} — ertaga yana keling!`);
+  if ($('rcopy')) $('rcopy').onclick = async () => { try { await navigator.clipboard.writeText($('rlink').value); toast('📋 Havola nusxalandi'); } catch { $('rlink').select(); } };
+  if ($('rsend')) $('rsend').onclick = () => act('/api/econ/ref', { inviter: $('rinv').value }, () => '🤝 Bonus olindi!');
+  document.querySelectorAll('[data-gu2]').forEach((el) => (el.onclick = () => { const r = state.residents.find((x) => x.username === el.dataset.gu2); if (r) { closeModal(); goTo({ ...r, t: '@' + r.username }); } }));
+}
+$('game').onclick = () => openGame();
+setInterval(loadEcon, 60000);
+setTimeout(async () => { await loadEcon(); if (econ && !econ.daily.claimed) openGame('day'); }, 9000); // kirganda: bugungi bonus esga solinadi
 
 // ---- Animatsiya ----
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });

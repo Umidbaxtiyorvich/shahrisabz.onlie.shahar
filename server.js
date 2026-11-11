@@ -176,8 +176,9 @@ async function refreshIgToken() {
 setInterval(() => refreshIgToken().catch(() => {}), 24 * 3600 * 1000);
 
 // ---- Xarita ma'lumoti: server bir marta OpenStreetMap'dan yuklab, data/osm.json da saqlaydi ----
-const OSM_FILE = path.join(__dirname, 'data', 'osm-v4.json');
-const OSM_BBOX = '38.90,66.62,39.22,67.05'; // tuman: katta yo'llar va qishloqlar
+const OSM_FILE = path.join(__dirname, 'data', 'osm-v5.json'); // v5: + Kitob tumani
+const OSM_BBOX = '38.90,66.62,39.36,67.30'; // Shahrisabz + Kitob tumanlari: katta yo'llar va qishloqlar
+const KITOB_BBOX = '39.09,66.82,39.17,66.93'; // Kitob shahri: barcha ko'chalar
 const CITY_BBOX = '39.00,66.76,39.11,66.89'; // shahar: barcha ko'chalar
 let osmLoading = null;
 async function getOsm() {
@@ -185,7 +186,7 @@ async function getOsm() {
   const bundled = path.join(PUB, 'osm.json'); if (fs.existsSync(bundled)) return fs.readFileSync(bundled);
   if (osmLoading) return osmLoading;
   osmLoading = (async () => {
-    const q = `[out:json][timeout:170];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|road)$"](${CITY_BBOX});way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${OSM_BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${OSM_BBOX}););out center tags;`;
+    const q = `[out:json][timeout:170];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|road)$"](${CITY_BBOX});way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|pedestrian|road)$"](${KITOB_BBOX});way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${OSM_BBOX}););out geom;(nwr["place"~"^(suburb|quarter|neighbourhood|city_block|village|hamlet|isolated_dwelling|locality|town)$"](${OSM_BBOX}););out center tags;`;
     const mirrors = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
     for (const u of mirrors) {
       try {
@@ -231,7 +232,7 @@ let poiLoading = null, weather = null;
 async function loadPois() {
   if (fs.existsSync(POI_FILE) || poiLoading) return;
   poiLoading = (async () => {
-    const q = `[out:json][timeout:120];(nwr["name"]["amenity"](${CITY_BBOX});nwr["name"]["shop"](${CITY_BBOX});nwr["name"]["tourism"](${CITY_BBOX});nwr["name"]["historic"](${CITY_BBOX});nwr["name"]["leisure"](${CITY_BBOX});nwr["name"]["office"](${CITY_BBOX});nwr["name"]["craft"](${CITY_BBOX});nwr["name"]["healthcare"](${CITY_BBOX}););out center tags;`;
+    const q = `[out:json][timeout:120];(nwr["name"]["amenity"](${CITY_BBOX});nwr["name"]["amenity"](${KITOB_BBOX});nwr["name"]["shop"](${KITOB_BBOX});nwr["name"]["shop"](${CITY_BBOX});nwr["name"]["tourism"](${CITY_BBOX});nwr["name"]["historic"](${CITY_BBOX});nwr["name"]["leisure"](${CITY_BBOX});nwr["name"]["office"](${CITY_BBOX});nwr["name"]["craft"](${CITY_BBOX});nwr["name"]["healthcare"](${CITY_BBOX}););out center tags;`;
     for (const u of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter']) {
       try {
         const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'shahrisabz-online-shahar' }, signal: AbortSignal.timeout(150000) });
@@ -386,6 +387,32 @@ async function dmWorker() {
 }
 setInterval(() => dmWorker().catch(() => {}), 10 * 1000); // 10 soniyada 1 ta xabar
 
+// ---- 🎮 O'yin iqtisodiyoti: binolar soatiga daromad beradi, yig'ib olinadi, darajasi oshiriladi; kunlik bonus; do'st taklifi ----
+db.settings.econ = Object.assign({ bizPct: 1, homePct: .25, capHours: 12, levelCostPct: 60, levelBonus: 30, maxLevel: 10, dailyBase: 5000, dailyStep: 2500, dailyMax: 40000, refBonus: 25000, refInvitee: 10000 }, db.settings.econ || {});
+const HOUR = 3600e3, DAY = 864e5;
+const tzDay = (t) => Math.floor((t + 5 * HOUR) / DAY); // O'zbekiston kuni (UTC+5)
+function econAssets(r) { // foydalanuvchining daromad beradigan mulklari
+  const out = [];
+  if (!r.homeless) out.push({ key: 'main', title: '🏠 Asosiy uy', o: r });
+  db.houses.filter((h) => h.owner === r.username).forEach((h, i) => out.push({ key: 'h:' + h.id, title: `🏠 ${i + 2}-uy`, o: h }));
+  db.plots.filter((p) => p.owner === r.username && p.status === 'sold' && p.built !== false).forEach((p) => out.push({ key: 'p:' + p.id, title: '📐 ' + (p.name || 'Joy'), o: p }));
+  const E = db.settings.econ, now = Date.now();
+  return out.map((a) => {
+    const st = a.o.style || 'oddiy', biz = String(st).startsWith('b:'), price = Math.max(stylePrice(st) || 0, biz ? 20000 : 3000000);
+    a.o.econ ||= { t: now, lv: 1 }; const lv = a.o.econ.lv || 1;
+    const rate = Math.round(price * (biz ? E.bizPct : E.homePct) / 100 * (1 + (lv - 1) * E.levelBonus / 100));
+    const hrs = Math.min(E.capHours, (now - a.o.econ.t) / HOUR), ready = Math.floor(rate * hrs);
+    const bn = biz ? (db.settings.shop.buildings[st.slice(2)]?.n || 'Bino') : '';
+    return { key: a.key, title: a.title + (bn ? ' · ' + bn : '') + (a.o.bname ? ` «${a.o.bname}»` : ''), biz, lv, rate, ready, full: hrs >= E.capHours, cap: Math.round(rate * E.capHours), fillPct: Math.round(hrs / E.capHours * 100), upCost: lv >= E.maxLevel ? null : Math.round(price * E.levelCostPct / 100 * lv), o: a.o };
+  });
+}
+const netWorth = (r) => (r.balance || 0) + econAssets(r).reduce((a, x) => a + (stylePrice(x.o.style || 'oddiy') || 0), 0) + (r.cars || []).reduce((a, c) => a + (db.settings.shop.cars[c.t] || 0), 0);
+function econState(r) {
+  const E = db.settings.econ, today = tzDay(Date.now()), d = r.daily || {};
+  const streak = d.day === today ? d.streak : d.day === today - 1 ? d.streak : 0;
+  const nextBonus = Math.min(E.dailyMax, E.dailyBase + E.dailyStep * (d.day === today - 1 ? d.streak : 0));
+  return { assets: econAssets(r).map(({ o, ...x }) => x), daily: { claimed: d.day === today, streak, next: nextBonus }, refBy: r.refBy || '', refs: db.residents.filter((x) => x.refBy === r.username).length, balance: r.balance || 0, econ: E };
+}
 function addTx(r, amount, text) { db.tx.push({ id: id(), user: r.username, amount, text, balance: r.balance || 0, at: Date.now() }); }
 const UPLOADS = path.join(__dirname, 'data', 'uploads');
 const AVATARS = path.join(__dirname, 'data', 'avatars');
@@ -826,6 +853,55 @@ async function api(req, res, url) {
   }
 
   // ---- UMUMIY CHAT (@shahrisabz.online.shahar): matn, rasm, video, ovoz, uy kartochkasi, sotuv e'loni, lokatsiya ----
+  // ---- 🎮 O'yin: daromad, yig'ish, daraja, kunlik bonus, reyting, taklif ----
+  if (m === 'POST' && p.startsWith('/api/econ/')) {
+    const b = await body(req);
+    if (p === '/api/econ/top') {
+      const list = db.residents.filter((x) => x.pass).map((x) => ({ u: x.username, w: netWorth(x), b: x.balance || 0, lv: econAssets(x).reduce((a, y) => a + y.lv, 0) }));
+      const top = (k) => [...list].sort((a, c) => c[k] - a[k]).slice(0, 20);
+      return send(res, 200, { worth: top('w'), level: top('lv') });
+    }
+    const r = userAuth(b); if (!r) return send(res, 403, { error: 'Avval kiring' });
+    const E = db.settings.econ;
+    if (p === '/api/econ/state') { save(); return send(res, 200, econState(r)); }
+    if (p === '/api/econ/collect') {
+      let sum = 0; const now = Date.now();
+      for (const a of econAssets(r)) { if (b.key && a.key !== b.key) continue; if (a.ready <= 0) continue; sum += a.ready; a.o.econ.t = now; }
+      if (!sum) return send(res, 400, { error: "Hali yig'iladigan pul yo'q" });
+      r.balance = (r.balance || 0) + sum; addTx(r, sum, "💰 Binolardan daromad"); save();
+      return send(res, 200, { ok: true, sum, ...econState(r) });
+    }
+    if (p === '/api/econ/upgrade') {
+      const a = econAssets(r).find((x) => x.key === b.key); if (!a) return send(res, 404, { error: 'Mulk topilmadi' });
+      if (!a.upCost) return send(res, 400, { error: 'Eng yuqori daraja' });
+      if ((r.balance || 0) < a.upCost) return send(res, 400, { error: `Hamyoningizda pul yetmaydi (kerak: ${a.upCost.toLocaleString('ru')} so'm)` });
+      if (a.ready > 0) { r.balance += a.ready; addTx(r, a.ready, "💰 Binolardan daromad"); }
+      r.balance -= a.upCost; a.o.econ = { t: Date.now(), lv: a.lv + 1 }; addTx(r, -a.upCost, `⬆️ ${a.title} — ${a.lv + 1}-daraja`); save();
+      return send(res, 200, { ok: true, ...econState(r) });
+    }
+    if (p === '/api/econ/daily') {
+      const today = tzDay(Date.now()), d = r.daily || {};
+      if (d.day === today) return send(res, 400, { error: 'Bugungi bonus olingan. Ertaga keling!' });
+      const streak = d.day === today - 1 ? (d.streak || 0) + 1 : 1, bonus = Math.min(E.dailyMax, E.dailyBase + E.dailyStep * (streak - 1));
+      r.daily = { day: today, streak }; r.balance = (r.balance || 0) + bonus; addTx(r, bonus, `🎁 Kunlik bonus (${streak}-kun ketma-ket)`); save();
+      return send(res, 200, { ok: true, bonus, ...econState(r) });
+    }
+    if (p === '/api/econ/ref') {
+      const inv = db.residents.find((x) => x.username === cleanName(b.inviter || ''));
+      if (r.refBy) return send(res, 400, { error: 'Taklif qilgan odam allaqachon yozilgan' });
+      if (!inv || inv === r) return send(res, 400, { error: 'Bunday foydalanuvchi topilmadi' });
+      if (inv.refBy === r.username) return send(res, 400, { error: "Bir-biringizni taklif qila olmaysiz" });
+      r.refBy = inv.username; inv.balance = (inv.balance || 0) + E.refBonus; r.balance = (r.balance || 0) + E.refInvitee;
+      addTx(inv, E.refBonus, `🤝 Do'st taklifi: @${r.username}`); addTx(r, E.refInvitee, `🤝 @${inv.username} taklifi bilan qo'shildingiz`); save();
+      return send(res, 200, { ok: true, ...econState(r) });
+    }
+    return send(res, 404, { error: 'Not found' });
+  }
+  if (m === 'POST' && p === '/api/admin/econ') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Admin emas' });
+    const b = await body(req); for (const k of Object.keys(db.settings.econ)) if (b[k] !== undefined && Number(b[k]) >= 0) db.settings.econ[k] = Number(b[k]);
+    save(); return send(res, 200, { ok: true, econ: db.settings.econ });
+  }
   // ---- Ob-havoni boshqarish: admin yoki @shahrisabz.online.shahar egasi ----
   if (m === 'POST' && (p === '/api/weather/set' || p === '/api/admin/weather')) {
     const b = await body(req);

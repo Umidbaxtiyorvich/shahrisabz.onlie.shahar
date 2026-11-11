@@ -41,7 +41,7 @@ export function initLife(C) {
     sky.material.uniforms.rayleigh.value = .4 + 1.4 * day + dusk * 1.5;
     renderer.toneMappingExposure = .6 + .45 * day - wet * .12 * day;
     const fog = dayFog.clone().lerp(duskFog, dusk * .6).lerp(nightFog, state.night * .9).lerp(rainFog, wet * .5 * day);
-    scene.fog.color.copy(fog); scene.fog.near = wet ? 600 : 2500; scene.fog.far = wet ? 5000 : 12000;
+    scene.fog.color.copy(fog); scene.fog.near = wet ? 600 : 4000; scene.fog.far = wet ? 6000 : 30000;
     if (envMap === undefined || (window.__dayEnv && envMap !== window.__dayEnv)) envMap = window.__dayEnv || scene.environment; scene.environment = day > .35 ? envMap : null; // tunda kunduzgi aks yorug'ligi o'chadi
     glass.emissive.setHex(state.night > .5 ? 0xffc46b : 0x1b3a5c); glass.emissiveIntensity = .25 + state.night * 1.1; // kechasi derazalar yonadi
     lampMat.emissiveIntensity = state.night * 2.5;
