@@ -101,3 +101,17 @@ button.big{padding:12px;font-size:15px;width:100%}
 .day.done{background:#d9f3e3;color:#13804a}.day.now{background:#fff1c9;outline:2px solid #f5b400}
 .trow{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:10px}.trow:nth-child(odd){background:#f6f8fc}.trow.me{background:#e8f0ff}
 .trow .ava{width:30px;height:30px}.tn{width:24px;text-align:center;font-weight:700}.tu{flex:1;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* ✨ Shahar hayoti */
+.tabs.wrap{flex-wrap:wrap}.tabs.wrap .tab{flex:1 1 30%}
+.farm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.fitem{background:#f6f8fc;border-radius:12px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}.fitem.ready{background:#e6f7ec;outline:2px solid #1fa463}
+.fic{font-size:30px}.fitem button{width:100%}
+.gpicks{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mcard{display:flex;gap:10px;align-items:center;background:#fff8e6;border-radius:12px;padding:6px;cursor:pointer}.mcard img,.mph{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;display:flex;align-items:center;justify-content:center;font-size:28px;background:#f3e3bd}
+textarea{border:1px solid #cfd8e6;border-radius:10px;padding:8px 10px;font:inherit;width:100%;resize:vertical}
+.cgoal{text-align:center;background:#f6f8fc;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:5px}.cgoal .big{font-size:30px;font-weight:800}
+.hcard{display:flex;gap:8px;align-items:center;justify-content:space-between;background:#f1f4f9;border-radius:12px;padding:8px 10px}.hcard.got{background:#eaf1ff}
+.games{display:grid;gap:8px}.gamebtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:linear-gradient(135deg,#2f7cf6,#7a4cf2);font-size:26px;padding:12px;white-space:normal;text-align:left}.gamebtn b{font-size:16px}.gamebtn small{font-size:12px;font-weight:400;opacity:.9}
+.qq{font-size:17px;font-weight:700;padding:6px 0}.qopts{display:grid;gap:6px}.qopts button{white-space:normal;text-align:left;padding:10px}
+.pairs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.pcard{aspect-ratio:1;font-size:30px;background:#2f7cf6;padding:0}.pcard.open{background:#fff3c4}
+.tbar{position:relative;height:34px;background:#f3e3bd;border-radius:17px;overflow:hidden}.tbar i{position:absolute;top:0;bottom:0;background:#1fa463;opacity:.8}.tbar b{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;background:#c0392b;border-radius:3px}

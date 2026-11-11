@@ -8,6 +8,7 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
 import { initLife } from './life.js?v=12';
+import { initFun } from './fun.js?v=1';
 import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 
@@ -636,6 +637,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => (downAt = [e.clientX,
 renderer.domElement.addEventListener('pointerup', (e) => { if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 6) onClick(e); });
 
 async function onClick(e) {
+  if (mode === 'view' && window.__funClick?.(e)) return; // xotira / tarixiy joy belgilari
   const p = groundPoint(e);
   if (mode === 'move' && p) {
     const n = nearestRoad(p.x, p.z);
@@ -958,8 +960,9 @@ function openHouseInfo(r) {
     <table class="itbl"><tr><td>${esc(styleName(r.style))}${r.bname ? ' «' + esc(r.bname) + '»' : ''} <span class="sw" style="background:${hex(r)}"></span></td><td>${housePrice ? money(housePrice) : 'boshlang\'ich'}</td></tr>
     ${cars.map((c) => `<tr><td>${CAR_NAMES[c.t] || esc(c.t)} <span class="sw" style="background:${esc(c.c)}"></span></td><td>${money(sh.cars[c.t] || 0)}</td></tr>`).join('')}
     ${plots.map((p) => `<tr><td>📐 ${esc(p.bname || p.name)} · ${p.sotix} sotix · ${esc(p.built === false ? '🏗️ qurilmagan' : styleName(p.style))}</td><td>${money((p.price || 0) + (p.built === false ? 0 : stylePriceC(p.style, sh)))}</td></tr>`).join('')}</table>
-    <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button><button class="ok" id="hofr">💰 Sotib olish taklifi</button>` : '<div class="hint">Yozishish va taklif uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
+    <div class="row">${myRes() ? `<button id="hchat">💬 Xabar yozish</button><button class="ok" id="hofr">💰 Sotib olish taklifi</button><button class="ghost" id="hgift">🎁 Sovg'a</button>` : '<div class="hint">Yozishish va taklif uchun saytga kiring.</div>'}<button class="ghost" id="hfly">🔍 Yaqindan ko'rish</button><button class="ghost" id="nope">Yopish</button></div>`);
   $('nope').onclick = closeModal; $('hfly').onclick = () => { closeModal(); flyTo(r.x, r.z, 45); };
+  if ($('hgift')) $('hgift').onclick = () => fun?.openGift(r.username);
   if ($('hchat')) { $('hchat').onclick = () => openChat(r.username); $('hofr').onclick = () => openOffer({ owner: r.username, kind: 'main', refId: '', title: `@${r.username} ning uyi` }); }
 }
 // ---- Ko'chish: xaritadan yoki manzil bo'yicha ----
@@ -1171,7 +1174,8 @@ $('group').onclick = openGroup;
 
 // ---- 🎮 O'yin: binolar daromadi, kunlik bonus, reyting, do'st taklifi ----
 try { const rf = new URLSearchParams(location.search).get('ref'); if (rf) store.set('ref', rf.replace(/^@/, '')); } catch {}
-let econ = null, gameTab = 'inc';
+let econ = null, gameTab = 'inc', fun = null;
+$('life').onclick = () => fun ? fun.open() : toast('⏳ Shahar yuklanmoqda…');
 async function loadEcon() { if (!myRes()) return null; try { econ = await api('/api/econ/state', me); } catch { econ = null; } updGameBadge(); return econ; }
 function updGameBadge() {
   const b = $('gbadge'); if (!b || !econ) return; const sum = econ.assets.reduce((a, x) => a + x.ready, 0), n = (econ.daily.claimed ? 0 : 1) + econ.assets.filter((x) => x.full).length;
@@ -1245,6 +1249,7 @@ let frame = 0;
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
   life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean), lampParts: K.partsH('r-light-curved', 8), surfaces: [ground.material, LAWN, ROADM] });
+  fun = initFun({ THREE, scene, camera, renderer, controls, K, $, api, getMe: () => me, myRes, modal, closeModal, toast, money, esc, ava, flyTo, toXZ, label, setBalance: (b) => { wallet.balance = b; if ($('bal')) $('bal').textContent = money(b); } });
   // Egasiz (OSM) haqiqiy binolar o'chirilgan: shaharda faqat obunachilarning uylari va sotib olingan binolar turadi
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));
