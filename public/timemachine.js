@@ -44,7 +44,7 @@ export function initTimeMachine(C) {
   // ---- UI: vaqt slayderi (har qanday yil: mil. avv. 700 — 2150) ----
   const yName = (y) => (y < 0 ? `mil. avv. ${-y}` : String(y));
   const bar = document.createElement('div'); bar.className = 'tmbar card';
-  bar.innerHTML = `<span class="tmt">🕰️</span><div class="tmmid"><div class="tmtop"><b id="tmy"></b><span id="tmp" class="muted"></span></div><input type="range" id="tmr" min="-700" max="2150" step="10"><div class="tmq">${[[-700, 'Qadim'], [1000, '1000'], [1400, '1400'], [1600, '1600'], [1900, '1900'], [1970, '1970'], [year, 'Bugun'], [2050, '2050'], [2120, '2120']].map(([v, t]) => `<button class="ghost" data-y="${v}">${t}</button>`).join('')}</div></div><button class="ghost" id="tminfo" title="Davr haqida">ℹ️</button>`;
+  bar.innerHTML = `<span class="tmt">🕰️</span><div class="tmmid"><div class="tmtop"><b id="tmy"></b><span id="tmp" class="muted"></span></div><input type="range" id="tmr" min="-700" max="2150" step="1"><div class="tmq">${[[-700, 'Qadim'], [1000, '1000'], [1400, '1400'], [1600, '1600'], [1900, '1900'], [1970, '1970'], [year, 'Bugun'], [2040, '2040'], [2070, '2070'], [2100, '2100'], [2150, '2150']].map(([v, t]) => `<button class="ghost" data-y="${v}">${t}</button>`).join('')}</div></div><button class="ghost" id="tminfo" title="Davr haqida">ℹ️</button>`;
   document.body.appendChild(bar);
   const rng = bar.querySelector('#tmr'); rng.value = year;
   const showY = (y) => { const P = periodOf(y); bar.querySelector('#tmy').textContent = yName(y) + '-yil'; bar.querySelector('#tmp').textContent = ' · ' + P.t; bar.classList.toggle('past', !P.now); bar.classList.toggle('fut', !!P.future); };
@@ -151,20 +151,20 @@ export function initTimeMachine(C) {
   const glassTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#20384f'; x.fillRect(0, 0, 64, 128);
     for (let j = 0; j < 16; j++) for (let i = 0; i < 4; i++) { x.fillStyle = Math.random() < .55 ? '#9fd4f0' : '#5f9cc4'; x.fillRect(2 + i * 16, 2 + j * 8, 13, 5); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t; })();
-  function future(g, y) { const k = Math.min(1, (y - 2030) / 100), maxN = Math.round(40 + k * 160), R = 700 + k * 1500, list = [];
+  function future(g, y) { const k = Math.min(1, (y - 2030) / 120), maxN = Math.round(90 + k * 260), R = 1000 + k * 1800, list = [];
     const segs = []; for (const w of ways) for (let i = 1; i < w.pts.length; i++) { const [ax, az] = w.pts[i - 1], [bx, bz] = w.pts[i], L = Math.hypot(bx - ax, bz - az); if (L > 40 && Math.hypot((ax + bx) / 2, (az + bz) / 2) < R) segs.push([ax, az, bx, bz, L, (w.wd || 6) / 2]); }
     segs.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
     for (const [ax, az, bx, bz, L, hw] of segs) { if (list.length >= maxN) break; const ux = (bx - ax) / L, uz = (bz - az) / L, rot = -Math.atan2(uz, ux);
       for (let t = 30; t < L - 30 && list.length < maxN; t += 70) for (const sd of [1, -1]) { const off = hw + 26, x = ax + ux * t - uz * off * sd, z = az + uz * t + ux * off * sd;
         if (Math.hypot(x, z) < 140 || !free(x, z, 20) || list.some((q) => Math.hypot(q[0] - x, q[1] - z) < 48)) continue;
-        const w = 22 + rnd() * 10, h = 40 + rnd() * (60 + k * 160) * (1 - Math.min(.7, Math.hypot(x, z) / R * .7)); list.push([x, z, w, h, w * (.7 + rnd() * .3), rot]); } }
+        const w = 22 + rnd() * 10, h = 45 + rnd() * (70 + k * 220) * (1 - Math.min(.7, Math.hypot(x, z) / R * .7)); list.push([x, z, w, h, w * (.7 + rnd() * .3), rot]); } }
     const mat = new THREE.MeshStandardMaterial({ map: glassTex, metalness: .6, roughness: .15, emissive: 0xffd9a0, emissiveMap: glassTex, emissiveIntensity: .25 });
     const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0); const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2, uv.getY(i) * 6);
     g.add(instanced(geo, mat, list));
     g.add(instanced(new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0), new THREE.MeshStandardMaterial({ color: 0x2a3a48, metalness: .5, roughness: .4 }), list.map(([x, z, w, h, d, r]) => [x, z, w * .7, h + 4, d * .7, r]))); // tomdagi texnik qavat
     const garden = list.filter((_, i) => i % 3 === 0).map(([x, z, w, h, d, r]) => [x, z, w * .9, h + 4.6, d * .9, r]); g.add(instanced(new THREE.BoxGeometry(1, .02, 1).translate(0, .5, 0), new THREE.MeshStandardMaterial({ color: 0x4f9f3a }), garden)); // tom bog'lari
     const fl = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: .7, roughness: .2, emissive: 0x7fe0ff, emissiveIntensity: .6 });
-    for (let i = 0; i < 30; i++) { const c = new THREE.Mesh(new THREE.CapsuleGeometry(1.2, 3, 4, 8), fl); c.rotation.z = Math.PI / 2; const o = new THREE.Group(); o.add(c); g.add(o); anim.push({ fly: o, R: 200 + rnd() * R, h: 50 + rnd() * 90, sp: (rnd() < .5 ? -1 : 1) * (.04 + rnd() * .06), a: rnd() * 6.283 }); } }
+    for (let i = 0; i < Math.round(25 + k * 70); i++) { const c = new THREE.Mesh(new THREE.CapsuleGeometry(1.2, 3, 4, 8), fl); c.rotation.z = Math.PI / 2; const o = new THREE.Group(); o.add(c); g.add(o); anim.push({ fly: o, R: 200 + rnd() * R, h: 50 + rnd() * 90, sp: (rnd() < .5 ? -1 : 1) * (.04 + rnd() * .06), a: rnd() * 6.283 }); } }
   function oqState(y) { return y < 1380 ? 'none' : y < 1404 ? 'build' : y <= 1570 ? 'full' : 'ruin'; }
   function build(P, y) {
     if (eraGroup) { scene.remove(eraGroup); eraGroup.traverse((o) => { o.geometry?.dispose?.(); }); } anim = []; eraGroup = new THREE.Group(); eraGroup.name = 'era';
@@ -182,7 +182,7 @@ export function initTimeMachine(C) {
     if (P.now) return; for (const o of scene.children) if (!isKeep(o) || (P.a < 1336 && o.isMesh && o.material === roadMat)) o.visible = false; } // yangi qo'shilganlar ham yashiriladi
   function setYear(y, fly) {
     year = y; const P = periodOf(y), ms = monsFor(y);
-    const nsig = P.now && !P.future ? 'now' : `${P.a}|${ms.join()}|${oqState(y)}|${P.soviet ? Math.round(y / 10) : ''}|${P.future ? Math.round(y / 20) : ''}`;
+    const nsig = P.now && !P.future ? 'now' : `${P.a}|${ms.join()}|${oqState(y)}|${P.soviet ? Math.round(y / 10) : ''}|${P.future ? Math.round(y / 10) : ''}`;
     if (nsig === sig) return; sig = nsig;
     if (!saved && !P.now) { saved = new Map(); for (const o of scene.children) saved.set(o, o.visible); saved.road = { c: roadMat.color.clone(), map: roadMat.map }; }
     if (P.now && saved) { for (const [o, v] of saved) o.visible = v; for (const o of scene.children) if (!saved.has(o)) o.visible = true; roadMat.color.copy(saved.road.c); roadMat.map = saved.road.map; roadMat.needsUpdate = true; saved = null; }
