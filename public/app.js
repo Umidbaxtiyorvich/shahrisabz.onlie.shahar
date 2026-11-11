@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=10';
+import { initLife } from './life.js?v=11';
 import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 

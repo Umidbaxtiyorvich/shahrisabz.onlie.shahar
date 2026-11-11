@@ -142,7 +142,8 @@ export function initLife(C) {
   // ---- Yer yuzasi: qorda asta oqaradi, yomg'irda ho'l (to'q va yaltiroq) bo'ladi ----
   const surf = (C.surfaces || []).map((m) => ({ m, c: m.color.clone(), r: m.roughness }));
   let snowAmt = 0, wetAmt = 0; const WHITE = new THREE.Color(0xf4f7fb), tmpC = new THREE.Color();
-  function updateSurface(dt) {
+  let surfT = performance.now();
+  function updateSurface() { const nw = performance.now(), dt = Math.min(5, (nw - surfT) / 1000); surfT = nw;
     snowAmt += ((state.snowOn ? 1 : 0) - snowAmt) * Math.min(1, dt / 25); wetAmt += ((state.rainOn ? 1 : 0) - wetAmt) * Math.min(1, dt / 12);
     for (const s of surf) { tmpC.copy(s.c).multiplyScalar(1 - wetAmt * .38).lerp(WHITE, snowAmt * (s.m.userData.snowK ?? .85)); s.m.color.copy(tmpC); s.m.roughness = s.r - (s.r - .22) * wetAmt * (1 - snowAmt); }
   }
@@ -210,7 +211,7 @@ export function initLife(C) {
   return {
     tick() {
       const now = performance.now(), dt = Math.min(.1, (now - last) / 1000); last = now;
-      moveTraffic(dt); movePrecip(dt); updateSurface(dt); moveClouds(dt); placeDiscs();
+      moveTraffic(dt); movePrecip(dt); updateSurface(); moveClouds(dt); placeDiscs();
       if (state.glowMat) state.glowMat.opacity = state.night * .35;
     },
     night: () => state.night,
