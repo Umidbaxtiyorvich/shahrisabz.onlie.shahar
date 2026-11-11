@@ -928,12 +928,13 @@ function showPreview(el, style, color) {
     const c = pvR.domElement; c.style.touchAction = 'none';
     c.onpointerdown = (e) => (pvDrag = e.clientX); addEventListener('pointerup', () => (pvDrag = null)); c.onpointermove = (e) => { if (pvDrag !== null) { pvAng -= (e.clientX - pvDrag) * .01; pvDrag = e.clientX; } };
     (function spin() { requestAnimationFrame(spin); const c = pvR.domElement; if (!c.isConnected || !pvObj) return; if (pvDrag === null) pvAng += .006;
-      const b = pvObj.userData.box, R = b.r; pvCam.position.set(Math.sin(pvAng) * R * 1.9, R * .9 + b.h * .2, Math.cos(pvAng) * R * 1.9); pvCam.lookAt(0, b.h * .35, 0); pvR.render(pvScene, pvCam); })();
+      const b = pvObj.userData.box, D = b.d; pvCam.position.set(Math.sin(pvAng) * D * .85, b.cy + D * .35, Math.cos(pvAng) * D * .85); pvCam.lookAt(0, b.cy, 0); pvR.render(pvScene, pvCam); })();
   }
   el.prepend(pvR.domElement); const w = el.clientWidth || 300, h = Math.round(Math.min(220, w * .6)); pvR.setSize(w, h); pvCam.aspect = w / h; pvCam.updateProjectionMatrix();
   if (pvObj) pvScene.remove(pvObj);
   const g = new THREE.Group(); try { buildStyle(g, style, color ? new THREE.Color(color) : hsl(20)); } catch {}
-  const bx = new THREE.Box3().setFromObject(g), sz = bx.getSize(new THREE.Vector3()); g.userData.box = { r: Math.max(18, Math.max(sz.x, sz.z) * .75, sz.y * .6), h: sz.y };
+  const bx = new THREE.Box3().setFromObject(g), sz = bx.getSize(new THREE.Vector3()); const sp = bx.getBoundingSphere(new THREE.Sphere()), vf = THREE.MathUtils.degToRad(pvCam.fov) / 2, hf = Math.atan(Math.tan(vf) * pvCam.aspect);
+  g.userData.box = { d: sp.radius / Math.sin(Math.min(vf, hf)) * 1.05, cy: sp.center.y }; pvCam.far = sp.radius * 10;  pvCam.updateProjectionMatrix();
   pvObj = g; pvScene.add(g);
 }
 function toast(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); }
