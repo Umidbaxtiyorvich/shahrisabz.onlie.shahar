@@ -139,6 +139,41 @@ export function initLife(C) {
     if (kGroups) for (const gp of kGroups) { gp.idx.forEach((ti, j) => { for (const im of gp.meshes) im.setMatrixAt(j, traffic[ti].m); }); for (const im of gp.meshes) im.instanceMatrix.needsUpdate = true; }
   }
 
+  // ---- Yer yuzasi: qorda asta oqaradi, yomg'irda ho'l (to'q va yaltiroq) bo'ladi ----
+  const surf = (C.surfaces || []).map((m) => ({ m, c: m.color.clone(), r: m.roughness }));
+  let snowAmt = 0, wetAmt = 0; const WHITE = new THREE.Color(0xf4f7fb), tmpC = new THREE.Color();
+  function updateSurface(dt) {
+    snowAmt += ((state.snowOn ? 1 : 0) - snowAmt) * Math.min(1, dt / 25); wetAmt += ((state.rainOn ? 1 : 0) - wetAmt) * Math.min(1, dt / 12);
+    for (const s of surf) { tmpC.copy(s.c).multiplyScalar(1 - wetAmt * .38).lerp(WHITE, snowAmt * (s.m.userData.snowK ?? .85)); s.m.color.copy(tmpC); s.m.roughness = s.r - (s.r - .22) * wetAmt * (1 - snowAmt); }
+  }
+  // ---- Bulutlar: osmonda suzib yuradigan yumshoq bulutlar (bulutlilikka qarab) ----
+  const cloudTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d');
+    for (let i = 0; i < 26; i++) { const x = 50 + Math.random() * 156, y = 90 + Math.random() * 76, r = 28 + Math.random() * 40, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const clouds = []; const cloudMat = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0 });
+  for (let i = 0; i < 60; i++) { const sp = new THREE.Sprite(cloudMat); const sc = 500 + Math.random() * 700; sp.scale.set(sc, sc * .45, 1); sp.userData.o = [(Math.random() - .5) * 7000, 650 + Math.random() * 400, (Math.random() - .5) * 7000]; sp.renderOrder = -1; scene.add(sp); clouds.push(sp); }
+  let cloudShift = 0;
+  function moveClouds(dt) {
+    const cc = state.weather ? THREE.MathUtils.clamp((state.weather.cloud_cover || 0) / 100, 0, 1) : .2, n = Math.round(clouds.length * (.15 + cc * .85));
+    cloudShift += dt * (4 + (state.weather?.wind_speed_10m || 5)); const t = controls.target, dark = state.rainOn || state.snowOn;
+    cloudMat.opacity += ((.35 + cc * .55) - cloudMat.opacity) * Math.min(1, dt); cloudMat.color.setScalar(dark ? .62 : 1 - state.night * .7);
+    clouds.forEach((c, i) => { c.visible = i < n; const [x, y, z] = c.userData.o; c.position.set(t.x + ((x + cloudShift + 3500) % 7000) - 3500, y, t.z + z); });
+  }
+  // ---- Quyosh va oy diski: har kuni sharqdan chiqib, g'arbga botadi (oy — quyoshga qarama-qarshi) ----
+  const discTex = (moonish) => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    if (moonish) { gr.addColorStop(0, '#fbfbf2'); gr.addColorStop(.42, '#e9eadf'); gr.addColorStop(.47, 'rgba(220,225,240,.35)'); gr.addColorStop(1, 'rgba(200,210,255,0)'); } else { gr.addColorStop(0, '#fffef6'); gr.addColorStop(.3, '#fff3c4'); gr.addColorStop(.5, 'rgba(255,220,140,.45)'); gr.addColorStop(1, 'rgba(255,200,120,0)'); }
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128); if (moonish) { g.fillStyle = 'rgba(160,165,175,.35)'; for (const [x, y, r] of [[52, 50, 8], [74, 70, 6], [60, 78, 5], [78, 48, 4]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: discTex(false), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+  const moonDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: discTex(true), transparent: true, depthWrite: false, fog: false }));
+  sunDisc.scale.setScalar(520); moonDisc.scale.setScalar(300); scene.add(sunDisc, moonDisc);
+  function placeDiscs() {
+    const p = camera.position, D = 6000; sunDisc.position.set(p.x + sunDir.x * D, p.y + sunDir.y * D, p.z + sunDir.z * D);
+    moonDisc.position.set(p.x - sunDir.x * D, p.y - sunDir.y * D + 900, p.z - sunDir.z * D);
+    const cl = (state.rainOn || state.snowOn) ? .15 : 1 - THREE.MathUtils.clamp((state.weather?.cloud_cover || 0) / 100, 0, 1) * .6;
+    sunDisc.visible = sunDir.y > -.05; sunDisc.material.opacity = cl; moonDisc.visible = -sunDir.y + .15 > 0; moonDisc.material.opacity = cl * Math.min(1, state.night * 1.5 + .25);
+  }
+
   // ---- Yomg'ir / qor: kamera atrofida tushayotgan zarrachalar ----
   const PN = 6000, pGeo = new THREE.BufferGeometry(), pArr = new Float32Array(PN * 3);
   for (let i = 0; i < PN; i++) { pArr[i * 3] = (Math.random() - .5) * 400; pArr[i * 3 + 1] = Math.random() * 220; pArr[i * 3 + 2] = (Math.random() - .5) * 400; }
@@ -163,22 +198,23 @@ export function initLife(C) {
   }
   function renderClock() {
     const el = $('wclock'); if (!el) return;
-    const now = new Date(), tm = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tashkent' });
+    const now = new Date(), tm = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Samarkand' });
     const w = state.weather, [ic, nm] = w ? WCODE(w.weather_code) : ['', ''];
-    el.innerHTML = `${state.night > .5 ? '🌙' : '🕒'} ${tm}${w ? ` · ${ic} ${Math.round(w.temperature_2m) > 0 ? '+' : ''}${Math.round(w.temperature_2m)}°C <span class="muted">${nm}</span>` : ''}`;
+    el.innerHTML = `${state.night > .5 ? '🌙' : '🕒'} ${tm}${w ? ` · ${ic} ${Math.round(w.temperature_2m) > 0 ? '+' : ''}${Math.round(w.temperature_2m)}°C <span class="muted">${nm}${w.forced ? ' ✋' : ''}</span>` : ''}`;
     el.title = w ? `Shahrisabz: ${nm}, shamol ${w.wind_speed_10m} km/soat` : 'Shahrisabz vaqti';
   }
 
   buildLamps(); buildTraffic(); updateSun(); loadWeather();
-  setInterval(updateSun, 30000); setInterval(loadWeather, 10 * 60 * 1000); setInterval(renderClock, 15000);
+  setInterval(updateSun, 10000); setInterval(loadWeather, 20000); setInterval(renderClock, 1000);
   let last = performance.now();
   return {
     tick() {
       const now = performance.now(), dt = Math.min(.1, (now - last) / 1000); last = now;
-      moveTraffic(dt); movePrecip(dt);
+      moveTraffic(dt); movePrecip(dt); updateSurface(dt); moveClouds(dt); placeDiscs();
       if (state.glowMat) state.glowMat.opacity = state.night * .35;
     },
     night: () => state.night,
+    refreshWeather: () => loadWeather(),
     setHour(h) { state.overrideHour = h; updateSun(); renderClock(); }, // sinov uchun
     setWeather(code, temp = 12, cloud = 80) { state.weather = { weather_code: code, temperature_2m: temp, cloud_cover: cloud, wind_speed_10m: 3 }; const c = code; state.rainOn = (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95; state.snowOn = (c >= 71 && c <= 77) || c === 85 || c === 86; precip.visible = state.rainOn || state.snowOn; pMat.size = state.snowOn ? 1.8 : 1; pMat.color.setHex(state.snowOn ? 0xffffff : 0xaecbe8); updateSun(); renderClock(); },
   };

@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=9';
+import { initLife } from './life.js?v=10';
 import * as K from './kenney.js?v=6';
 import { loadRealCity } from './realcity.js?v=1';
 
@@ -195,7 +195,7 @@ function buildRoads(data) {
   }
   const addMerged = (arr, mat, shadow) => { for (let i = 0; i < arr.length; i += 4000) { const m = new THREE.Mesh(mergeGeometries(arr.slice(i, i + 4000)), mat); m.receiveShadow = shadow; scene.add(m); } };
   addMerged(walkGeo, new THREE.MeshStandardMaterial({ ...pbr('concrete', 1), roughness: .95, color: 0xf2efe8 }), true);
-  addMerged(geos, new THREE.MeshStandardMaterial({ ...pbr('asphalt', 1), roughness: .9, color: 0x9a9a9a }), true);
+  addMerged(geos, ROADM, true);
   addMerged(lineGeo, new THREE.MeshStandardMaterial({ map: TEX.dash, transparent: true, roughness: .6 }), false);
   addMerged(edgeGeo, new THREE.MeshStandardMaterial({ color: 0xf4f2ea, roughness: .6 }), false);
   // Chorrahalarda "zebra" piyoda o'tish joylari (3 va undan ko'p yo'l uchrashgan joyda)
@@ -332,6 +332,7 @@ function win(g, w, h, x, y, z, rotY = 0) { const wg = new THREE.Group(); box(wg,
 function windowsRow(g, w, y, z, n, h = 2.4) { for (let i = 0; i < n; i++) win(g, (w / n) * .62, h, -w / 2 + (w / n) * (i + .5), y, z); }
 function railing(g, w, x, y, z) { box(g, w, 1, .1, new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: .35, roughness: .05, metalness: .3 }), x, y, z); box(g, w, .08, .14, FRAME, x, y + 1, z); }
 function tree(g, x, z, s = 1) { const qn = ['q-tree-a', 'q-tree-b', 'q-bush'][Math.abs(Math.round(x * 7 + z * 3)) % 3]; if (K.has(qn)) { const m = K.place(qn, (qn === 'q-bush' ? 3 : 6) * s); m.position.set(x, 0, z); g.add(m); return; } const t = new THREE.Mesh(new THREE.SphereGeometry(2.2 * s, 14, 10), M(new THREE.Color().setHSL(rnd(.25, .32), .55, rnd(.24, .32)), { roughness: .85 })); t.position.set(x, 3.6 * s, z); t.castShadow = true; g.add(t); box(g, .4 * s, 2.4 * s, .4 * s, M(0x6b4a2b), x, 0, z); }
+const ROADM = new THREE.MeshStandardMaterial({ ...pbr('asphalt', 1), roughness: .9, color: 0x9a9a9a }); ROADM.userData.snowK = .55;
 const LAWN = new THREE.MeshStandardMaterial({ ...pbr('grass', 4), roughness: 1, color: 0xe0f5b8 });
 const GRILLE = new THREE.MeshStandardMaterial({ map: canvasTex(64, (g, s) => { g.clearRect(0, 0, s, s); g.fillStyle = '#2f343b'; for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 2, s); }, 1), transparent: true, alphaTest: .3, side: THREE.DoubleSide });
 GRILLE.map.repeat.set(12, 1);
@@ -824,6 +825,7 @@ async function openTopup() {
   };
 }
 const ST_OFFER = { pending: '⏳ kutilmoqda', sotildi: '✅ sotildi', 'rad etildi': '❌ rad etildi', bekor: 'bekor qilindi', eskirgan: 'eskirgan' };
+const WMODES = [['auto', '🛰️ Haqiqiy'], ['sun', '☀️ Quyosh'], ['cloud', '☁️ Bulutli'], ['rain', '🌧️ Yomg\'ir'], ['snow', '❄️ Qor']];
 async function openMyPanel() {
   await loadWallet(); const r = myRes(); if (!r) return;
   const addr = (o) => [o.mahalla, o.street, o.no && 'uy ' + o.no].filter(Boolean).join(', ') || '—';
@@ -841,7 +843,9 @@ async function openMyPanel() {
     ${assets.map((a, i) => `<div class="offer"><div><b>${esc(a.title)}</b><div class="muted">📍 ${esc(addr(a.o))}</div></div><div class="row"><button class="ghost" data-fly="${i}">🔍</button><button class="ghost" data-ed="${i}">✏️ Manzil</button><button class="ghost" data-ds="${i}">🎨</button></div></div>`).join('') || '<div class="muted">Mulk yo\'q</div>'}
     ${wallet.offersOut.length ? `<details><summary class="muted">Mening takliflarim (${wallet.offersOut.length})</summary>${wallet.offersOut.map((o) => `<div class="muted">${fmtT(o.at)} · ${esc(o.title)} · ${money(o.price)} · ${o.initiator === 'buyer' ? '@' + esc(o.seller) + ' ga taklif' : '@' + esc(o.buyer) + ' ga sotish'} · ${ST_OFFER[o.status] || esc(o.status)} ${o.status === 'pending' ? `<a href="#" data-cnc="${o.id}">bekor qilish</a>` : ''}</div>`).join('')}</details>` : ''}
     <details><summary class="muted">Hamyon tarixi</summary>${wallet.tx.map((t) => `<div class="muted">${fmtT(t.at)} · <b style="color:${t.amount > 0 ? '#1fa463' : '#e24b4b'}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</b> · ${esc(t.text)}</div>`).join('') || '<div class="muted">Bo\'sh</div>'}</details>
+    ${r.owner ? `<b>🌦️ Shahar ob-havosi (faqat siz boshqarasiz)</b><div class="row wbtns">${WMODES.map(([k, t]) => `<button class="${(wallet.weatherMode || 'auto') === k ? 'ok' : 'ghost'}" data-wm="${k}">${t}</button>`).join('')}</div>` : ''}
     <button class="ghost" id="nope">Yopish</button>`);
+  document.querySelectorAll('[data-wm]').forEach((b) => (b.onclick = async () => { try { await api('/api/weather/set', { ...me, mode: b.dataset.wm }); wallet.weatherMode = b.dataset.wm; life?.refreshWeather(); toast('🌦️ Ob-havo o\'zgardi: ' + b.textContent); openMyPanel(); } catch (e) { alert(e.message); } }));
   $('ptop').onclick = openTopup; $('ppass').onclick = askNewPass;
   $('nope').onclick = closeModal; $('pdes').onclick = () => openDesigner(null); $('pcar').onclick = () => openDesigner(null, 'c'); $('pmove').onclick = openMove; $('pbuy').onclick = () => { closeModal(); setMode('buy'); };
   document.querySelectorAll('[data-fly]').forEach((b) => (b.onclick = () => { const a = assets[b.dataset.fly]; closeModal(); flyTo(a.x, a.z, 70); }));
@@ -897,7 +901,7 @@ function openDesigner(plot, startTab) {
       ${tab !== 'c' ? `${String(sel.style).startsWith('b:') ? `<label>Bino nomi (peshlavhada)<input id="bname" maxlength="40" value="${esc(cur.bname || '')}" placeholder="masalan: Umid market"></label>` : ''}
       <div class="row" style="align-items:center"><label class="clr">🎨 Rang <input type="color" id="hcol" value="${sel.color}"></label><span class="muted">rang o'zgartirish: ${money(sh.repaint)}</span></div>
       <button class="ok" id="dbuy">Saqlash</button>` : ''}
-      ${plot || tab !== 'c' ? '' : `<b>➕ Yangi mashina sotib olish</b>
+      ${plot || tab !== 'c' ? '' : `<div class="pv" id="pvc"><div class="pvcap" id="pvccap"></div></div><b>➕ Yangi mashina sotib olish</b>
       <div class="row" style="align-items:center"><select id="ncar">${Object.entries(sh.cars).filter(([k]) => k !== 'yoq').map(([k, v]) => `<option value="${esc(k)}">${CAR_NAMES[k] || esc(k)} — ${money(v)}</option>`).join('')}</select><label class="clr">Rangi <input type="color" id="ncol" value="#c0392b"></label><button class="ok" id="nbuy">Sotib olish</button></div>
       <hr><b>🚗 Mashinalarim (${cars.length})</b>
       ${cars.map((c, i) => `<div class="carrow"><span>${CAR_NAMES[c.t] || esc(c.t)}</span><input type="color" value="${esc(c.c)}" data-ci="${i}"><button class="ghost" data-cr="${i}">Rangni saqlash</button><button class="no" data-cx="${i}">✕</button></div>`).join('') || '<div class="muted">Hali mashina yo\'q</div>'}
@@ -911,6 +915,8 @@ function openDesigner(plot, startTab) {
     const bn = () => ($('bname') ? { bname: $('bname').value } : {});
     if ($('dbuy')) $('dbuy').onclick = () => go(isHouse ? { houseId: plot.id, style: sel.style, color: $('hcol').value, ...bn() } : { plotId: plot?.id, style: sel.style, color: $('hcol').value, ...bn() }, unbuilt ? '🏗️ Uy qurildi!' : '✅ Saqlandi');
     if (!plot && tab === 'c') {
+      const carPv = () => { const t = $('ncar').value; $('pvccap').innerHTML = `<b>${CAR_NAMES[t] || esc(t)}</b> · ${money(sh.cars[t] || 0)}<br><small>🔄 aylantirib ko'ring</small>`; showPreview($('pvc'), (g) => { const c = car(t, $('ncol').value); g.add(c); const li = lodCars.indexOf(c); if (li >= 0) lodCars.splice(li, 1); if (c.userData.lod) upgradeLod(c).then(() => { const l = c.userData.lod; if (l.real) { l.real.visible = true; l.simple.visible = false; } }); }); };
+      $('ncar').onchange = carPv; $('ncol').oninput = carPv; carPv();
       $('nbuy').onclick = () => go({ buyCar: { t: $('ncar').value, c: $('ncol').value } }, '🚗 Mashina uyingiz oldida!');
       document.querySelectorAll('[data-cr]').forEach((b) => (b.onclick = () => go({ recolorCar: { i: +b.dataset.cr, c: document.querySelector(`[data-ci="${b.dataset.cr}"]`).value } }, '🎨 Rang o\'zgardi')));
       document.querySelectorAll('[data-cx]').forEach((b) => (b.onclick = () => confirm('Bu mashinani olib tashlaysizmi? (pul qaytmaydi)') && go({ removeCar: +b.dataset.cx }, 'Olib tashlandi')));
@@ -932,7 +938,7 @@ function showPreview(el, style, color) {
   }
   el.prepend(pvR.domElement); const w = el.clientWidth || 300, h = Math.round(Math.min(220, w * .6)); pvR.setSize(w, h); pvCam.aspect = w / h; pvCam.updateProjectionMatrix();
   if (pvObj) pvScene.remove(pvObj);
-  const g = new THREE.Group(); try { buildStyle(g, style, color ? new THREE.Color(color) : hsl(20)); } catch {}
+  const g = new THREE.Group(); try { if (typeof style === 'function') style(g); else buildStyle(g, style, color ? new THREE.Color(color) : hsl(20)); } catch {}
   g.updateMatrixWorld(true); const bx = new THREE.Box3(), tb = new THREE.Box3(), ts = new THREE.Vector3();
   g.traverse((o) => { if (!o.isMesh || o.isInstancedMesh || !o.geometry) return; o.geometry.computeBoundingBox(); tb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); tb.getSize(ts); if (Math.max(ts.x, ts.z) > 120 && ts.y < 2) return; bx.union(tb); }); // juda katta yassi qismlar (yer, soya) hisobga olinmaydi
   if (bx.isEmpty()) bx.set(new THREE.Vector3(-10, 0, -10), new THREE.Vector3(10, 10, 10)); const sp = bx.getBoundingSphere(new THREE.Sphere()), vf = THREE.MathUtils.degToRad(pvCam.fov) / 2, hf = Math.atan(Math.tan(vf) * pvCam.aspect);
@@ -1190,7 +1196,7 @@ let frame = 0;
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
-  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean), lampParts: K.partsH('r-light-curved', 8) });
+  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean), lampParts: K.partsH('r-light-curved', 8), surfaces: [ground.material, LAWN, ROADM] });
   // Egasiz (OSM) haqiqiy binolar o'chirilgan: shaharda faqat obunachilarning uylari va sotib olingan binolar turadi
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));

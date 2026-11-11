@@ -751,7 +751,7 @@ async function api(req, res, url) {
   if (m === 'POST' && p === '/api/me') {
     const b = await body(req); const r = userAuth(b);
     if (!r) return send(res, 403, { error: 'Avval kiring' });
-    return send(res, 200, { homeless: !!r.homeless, no: r.no || '', houses: db.houses.filter((h) => h.owner === r.username).map(pubHouse), offersIn: db.offers.filter((o) => o.status === 'pending' && (o.initiator === 'buyer' ? o.seller : o.buyer) === r.username).map((o) => ({ ...o, buyerCanPay: (db.residents.find((x) => x.username === o.buyer)?.balance || 0) >= o.price })), offersOut: db.offers.filter((o) => (o.initiator === 'buyer' ? o.buyer : o.seller) === r.username).slice(-20).reverse(), balance: r.balance || 0, tx: db.tx.filter((t) => t.user === r.username).slice(-30).reverse(), shop: db.settings.shop, plots: db.plots.filter((x) => x.owner === r.username && x.status !== 'rejected').map(pubPlot) });
+    return send(res, 200, { weatherMode: db.settings.weatherMode || 'auto', homeless: !!r.homeless, no: r.no || '', houses: db.houses.filter((h) => h.owner === r.username).map(pubHouse), offersIn: db.offers.filter((o) => o.status === 'pending' && (o.initiator === 'buyer' ? o.seller : o.buyer) === r.username).map((o) => ({ ...o, buyerCanPay: (db.residents.find((x) => x.username === o.buyer)?.balance || 0) >= o.price })), offersOut: db.offers.filter((o) => (o.initiator === 'buyer' ? o.buyer : o.seller) === r.username).slice(-20).reverse(), balance: r.balance || 0, tx: db.tx.filter((t) => t.user === r.username).slice(-30).reverse(), shop: db.settings.shop, plots: db.plots.filter((x) => x.owner === r.username && x.status !== 'rejected').map(pubPlot) });
   }
   // Uy / mashina / joydagi binoni o'zgartirish — hamyondan to'lanadi
   if (m === 'POST' && p === '/api/upgrade') {
@@ -826,6 +826,14 @@ async function api(req, res, url) {
   }
 
   // ---- UMUMIY CHAT (@shahrisabz.online.shahar): matn, rasm, video, ovoz, uy kartochkasi, sotuv e'loni, lokatsiya ----
+  // ---- Ob-havoni boshqarish: admin yoki @shahrisabz.online.shahar egasi ----
+  if (m === 'POST' && (p === '/api/weather/set' || p === '/api/admin/weather')) {
+    const b = await body(req);
+    const ok = p === '/api/admin/weather' ? isAdmin(req) : userAuth(b)?.owner;
+    if (!ok) return send(res, 403, { error: 'Ruxsat yo\'q' });
+    if (!['auto', 'sun', 'cloud', 'rain', 'snow'].includes(b.mode)) return send(res, 400, { error: 'Noto\'g\'ri rejim' });
+    db.settings.weatherMode = b.mode; save(); return send(res, 200, { ok: true, mode: b.mode });
+  }
   if (m === 'POST' && p === '/api/group/list') {
     const b = await body(req); const after = Number(b.after) || 0;
     return send(res, 200, { messages: db.group.filter((x) => x.at > after).slice(-200) });
@@ -1011,7 +1019,7 @@ http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   }
   try {
-    if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname.startsWith('/api/') && url.pathname !== '/api/weather') return await api(req, res, url);
     if (url.pathname === '/shahrisabz-watcher.user.js') { // admin tokeni bilan — ichida maxfiy kalit bor
       if (url.searchParams.get('t') !== ADMIN_TOKEN) { res.writeHead(401); return res.end('Admin emas'); }
       const site = SITE() || `https://${req.headers.host}`;
@@ -1044,7 +1052,9 @@ http.createServer(async (req, res) => {
           const j = await r.json(); if (j.current) weather = { at: Date.now(), ...j.current };
         } catch (e) { console.log('Ob-havo:', e.message); }
       }
-      return send(res, 200, weather || { error: "Ob-havo hozircha yo'q" });
+      const mode = db.settings.weatherMode || 'auto', F = { sun: [0, 5], cloud: [3, 95], rain: [63, 100], snow: [73, 100] }[mode];
+      if (F) return send(res, 200, { ...(weather || { temperature_2m: 15, wind_speed_10m: 3 }), weather_code: F[0], cloud_cover: F[1], ...(mode === 'snow' && (weather?.temperature_2m ?? 15) > 1 ? { temperature_2m: -2 } : {}), mode, forced: true });
+      return send(res, 200, weather ? { ...weather, mode: 'auto' } : { error: "Ob-havo hozircha yo'q", mode: 'auto' });
     }
     if (url.pathname === '/buildings.json') {
       if (!fs.existsSync(BLD_FILE)) { loadBuildings(); return send(res, 200, { b: [] }); }
