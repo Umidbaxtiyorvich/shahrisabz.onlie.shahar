@@ -1,5 +1,6 @@
 // ✨ Shahar hayoti: tirik hovli, qo'shniga sovg'a, "Mahallam xotirasi", birgalikda shahar bog'i, Shahrisabz tarixi kolleksiyasi, mini-o'yinlar.
 // app.js dan C (kontekst) bilan ishga tushiriladi.
+import { buildMonuments } from './monuments.js?v=1';
 export function initFun(C) {
   const { THREE, scene, camera, renderer, controls, K, $, api, getMe, myRes, modal, closeModal, toast, money, esc, ava, flyTo, toXZ, label, setBalance } = C;
   let fs = null, tab = 'farm', pub = { memories: [], trees: [], history: {} };
@@ -8,11 +9,12 @@ export function initFun(C) {
 
   // ---- Xaritadagi belgilar: xotiralar (📜), tarixiy joylar (🏛️), ekilgan daraxtlar ----
   const markers = new THREE.Group(); scene.add(markers); const clickable = [];
-  let treeMeshes = [];
+  let treeMeshes = [], monuments = null;
   function drawPublic() {
     for (const o of [...markers.children]) markers.remove(o); clickable.length = 0;
     for (const m of pub.memories) { const l = label('📜 ' + m.title.slice(0, 22), { size: 26, bg: 'rgba(255,248,225,.95)', fg: '#7a4b00', scale: 1.1 }); l.position.set(m.x, 18, m.z); l.userData.mem = m; markers.add(l); clickable.push(l); }
-    for (const [k, h] of Object.entries(pub.history || {})) { const [x, z] = toXZ(h.lat, h.lon); const l = label('🏛️ ' + h.n, { size: 28, bg: 'rgba(32,58,120,.92)', fg: '#fff', scale: 1.5 }); l.position.set(x, 55, z); l.userData.hist = k; markers.add(l); clickable.push(l); }
+    for (const [k, h] of Object.entries(pub.history || {})) { const [x, z] = toXZ(h.lat, h.lon); const l = label('🏛️ ' + h.n, { size: 28, bg: 'rgba(32,58,120,.92)', fg: '#fff', scale: 1.5 }); l.position.set(x, ({ oqsaroy: 52, temur: 26, kokgumbaz: 60, dorussiyodat: 45, dorutilovat: 36, chorsu: 30, kitob: 24 }[k] || 30), z); l.userData.hist = k; markers.add(l); clickable.push(l); }
+    if (!monuments && Object.keys(pub.history || {}).length) monuments = buildMonuments({ THREE, scene, toXZ, history: pub.history });
     for (const t of treeMeshes) scene.remove(t); treeMeshes = [];
     const parts = K.parts('q-tree-b', 6) || K.parts('tree-oak', 6); if (!parts || !pub.trees.length) return;
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
@@ -25,7 +27,9 @@ export function initFun(C) {
   const ray = new THREE.Raycaster(), mv = new THREE.Vector2();
   window.__funClick = (e) => { // app.js onClick dan oldin chaqiriladi
     mv.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); ray.setFromCamera(mv, camera);
-    const hit = ray.intersectObjects(clickable.filter((o) => o.visible), false)[0]; if (!hit) return false;
+    const hit = ray.intersectObjects(clickable.filter((o) => o.visible), false)[0];
+    if (!hit && monuments) { const mh = ray.intersectObject(monuments, true)[0]; if (mh) { let o = mh.object; while (o && !o.userData.hist) o = o.parent; if (o) { openHistory(o.userData.hist); return true; } } }
+    if (!hit) return false;
     const u = hit.object.userData; if (u.mem) openMemory(u.mem); else if (u.hist) openHistory(u.hist); return true;
   };
 

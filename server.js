@@ -429,6 +429,18 @@ const HISTORY = {
   unesco: { n: 'Tarixiy markaz (UNESCO)', lat: 39.0578, lon: 66.8297, y: '2000', f: "Shahrisabz tarixiy markazi 2000-yilda UNESCO Butunjahon merosi ro'yxatiga kiritilgan. Shahar 2700 yildan ortiq tarixga ega." },
   kitob: { n: 'Kitob kenglik stansiyasi', lat: 39.1340, lon: 66.8812, y: '1899', f: "Yer qutblarining harakatini o'rganuvchi xalqaro kenglik stansiyasi — dunyodagi shunday 5 ta stansiyadan biri." },
 };
+const HIST_R = { oqsaroy: 70, temur: 45, kokgumbaz: 60, dorussiyodat: 45, dorutilovat: 50, chorsu: 35, unesco: 0, kitob: 40 };
+const HIST_RX = { oqsaroy: /oq ?saroy|ak[- ]?sara[iy]|оқ ?сарой|ак[- ]?сарай/i, temur: /(temur|timur|темур|тимур).*(hayk|monument|памятн)|(hayk|monument|памятн).*(temur|timur|темур|тимур)/i, kokgumbaz: /k[oöu]'?k[- ]?gumbaz|кўк ?гумбаз|кук[- ]?гумбаз/i, dorussiyodat: /dorus|дорус|jahongir|жахонгир/i, dorutilovat: /dorut|дорут|tilovat|тиловат/i, chorsu: /chorsu|чорсу/i, kitob: /kenglik|широтн|latitude/i };
+let histFix = null, histFixAt = 0;
+function historyFixed() { // OSM dagi haqiqiy obida nuqtasi topilsa — o'sha koordinata (3 km ichida)
+  if (histFix && Date.now() - histFixAt < 3600e3) return histFix;
+  let pois = []; try { pois = JSON.parse(fs.readFileSync(POI_FILE)).joylar || []; } catch {}
+  histFix = {}; for (const [k, h] of Object.entries(HISTORY)) { const rx = HIST_RX[k]; let best = null, bd = 3000;
+    if (rx) for (const p of pois) { if (!rx.test(p.n)) continue; const d = Math.hypot((p.lat - h.lat) * 110540, (p.lon - h.lon) * 86500); if (d < bd) { bd = d; best = p; } }
+    histFix[k] = best ? { ...h, lat: best.lat, lon: best.lon, osm: best.n } : { ...h }; }
+  histFixAt = Date.now(); return histFix;
+}
+const nearMonument = (x, z, pad = 0) => Object.entries(historyFixed()).some(([k, h]) => HIST_R[k] && Math.hypot(...((p) => [p[0] - x, p[1] - z])(toXZ(h.lat, h.lon))) < HIST_R[k] + pad);
 const GAME_LIMIT = 5, GAME_MAX = 8000;
 function cityGoalPay(r) { let paid = 0; while ((r.cityPaid || 0) < db.city.goalsDone) { const g = CITY_GOALS[r.cityPaid || 0]; r.balance = (r.balance || 0) + g.bonus; addTx(r, g.bonus, `🎉 Shahar maqsadi: ${g.t}`); r.cityPaid = (r.cityPaid || 0) + 1; paid += g.bonus; } return paid; }
 function funState(r) {
@@ -527,6 +539,7 @@ const HOUSE_R = 23; // uy hovlisi radiusi (m): eng katta dizayn (villa) hovlisi 
 function spotFree(x, z, exceptUser) {
   if (roadClear(x, z) < HOUSE_R) return false;
   if (nearBuilding(x, z, HOUSE_R * .8)) return false; // haqiqiy bino ustiga tushmasin
+  if (nearMonument(x, z, HOUSE_R)) return false; // tarixiy obidalar joyi band
   if (db.residents.some((r) => !r.homeless && r.username !== exceptUser && Math.hypot(r.x - x, r.z - z) < HOUSE_R * 2)) return false;
   if (db.houses.some((h) => Math.hypot(h.x - x, h.z - z) < HOUSE_R * 2)) return false;
   if (db.plots.some((p) => p.status !== 'rejected' && x > p.x1 - HOUSE_R && x < p.x2 + HOUSE_R && z > p.z1 - HOUSE_R && z < p.z2 + HOUSE_R)) return false;
@@ -924,7 +937,7 @@ async function api(req, res, url) {
   }
   if (m === 'POST' && p.startsWith('/api/fun/')) {
     const b = await body(req);
-    if (p === '/api/fun/public') return send(res, 200, { memories: db.memories.slice(-400).map((x) => ({ ...x, likes: (x.likes || []).length, liked: undefined })), trees: db.city.spots.slice(-3000), history: HISTORY, city: { trees: db.city.trees, done: db.city.goalsDone, goals: CITY_GOALS } });
+    if (p === '/api/fun/public') return send(res, 200, { memories: db.memories.slice(-400).map((x) => ({ ...x, likes: (x.likes || []).length, liked: undefined })), trees: db.city.spots.slice(-3000), history: historyFixed(), city: { trees: db.city.trees, done: db.city.goalsDone, goals: CITY_GOALS } });
     const r = userAuth(b); if (!r) return send(res, 403, { error: 'Avval saytga kiring' });
     const now = Date.now(), today = tzDay(now);
     if (p === '/api/fun/state') { cityGoalPay(r); save(); return send(res, 200, funState(r)); }
