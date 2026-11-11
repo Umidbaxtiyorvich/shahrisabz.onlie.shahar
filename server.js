@@ -75,6 +75,7 @@ for (const [k, v] of Object.entries({
   temiryol: { n: 'Temir yo\'l vokzali', i: '🚉', m: 'govt', p: 200000000 }, avtovokzal: { n: 'Avtovokzal', i: '🚌', m: 'carshow', p: 120000000 },
 })) db.settings.shop.buildings[k] ??= v;
 'abcdefghijklmnopqrstu'.split('').forEach((c, i) => { db.settings.shop.houses['uy_' + c] ??= 4000000 + i * 1500000; }); // Kenney uylari (21 ta)
+['house-a', 'house-b', 'house-c', 'tower-a', 'tower-b', 'tower-c', 'tower-d'].forEach((c, i) => { db.settings.shop.houses['mb_' + c] ??= (c.startsWith('t') ? 45000000 : 12000000) + i * 3000000; }); // fps-kit modul binolari
 const MODELS = ['busstop', 'workshop', 'guesthouse', 'bakery', 'shop', 'market', 'bazaar', 'cafe', 'chaikhana', 'restaurant', 'wedding', 'hotel', 'pharmacy', 'hospital', 'school', 'kinder', 'bank', 'office', 'govt', 'mosque', 'gas', 'carshow', 'gym', 'stadium', 'cinema', 'park', 'factory', 'garage'];
 const stylePrice = (st) => { const sh = db.settings.shop; if (String(st).startsWith('b:')) { const bb = sh.buildings[st.slice(2)]; return bb ? bb.p : null; } return st in sh.houses ? sh.houses[st] : null; };
 db.dmQueue ||= [];

@@ -4,10 +4,11 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeBuildings } from './buildings.js?v=2';
-import { initLife } from './life.js?v=8';
-import * as K from './kenney.js?v=4';
+import { initLife } from './life.js?v=9';
+import * as K from './kenney.js?v=5';
 import { loadRealCity } from './realcity.js?v=1';
 
 // ---- Koordinatalar: Shahrisabz markazi (Oqsaroy atrofi) ----
@@ -35,6 +36,8 @@ const scene = new THREE.Scene();
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture; // shisha va mashina bo'yog'idagi aks
+// Haqiqiy osmon yoritilishi (Poly Haven HDRI, CC0, fps-buildings-env-kit): tabiiy aks va yorug'lik
+new RGBELoader().load('./textures/hdri/sky.hdr', (t) => { const pm = new THREE.PMREMGenerator(renderer); const env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); window.__dayEnv = env; if (!life) scene.environment = env; });
 // ---- Tabiiy ko'rinish: protsedural teksturalar (internetdan rasm yuklamasdan) ----
 const maxAniso = renderer.capabilities.getMaxAnisotropy();
 function canvasTex(size, draw, repeat = 1) {
@@ -242,9 +245,9 @@ function buildRoads(data) {
     crowns.setColorAt(i, col.setHSL(rnd(.26, .33), rnd(.55, .75), rnd(.26, .36))); });
   const kt = ['tree-oak', 'tree-default', 'tree-fat', 'tree-detailed'].map((n) => K.parts(n, 6.5)).filter(Boolean);
   if (kt.length) { // Kenney daraxtlari: har turi uchun alohida instanced mesh, joylar navbat bilan bo'linadi
-    const qt = ['q-tree-a', 'q-tree-b', 'q-tree-a', 'q-pine'].map((n) => K.parts(n, 7)).filter(Boolean);
+    const qt = ['q-tree-a', 'q-tree-b', 'n-tree-avoxahrpwe', 'n-tree-qvoop92wmg', 'q-pine', 'n-pine-zt62gcekxz'].map((n) => K.parts(n, 7)).filter(Boolean);
     spots.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
-    const nearSpots = qt.length ? spots.splice(0, 250) : []; // markaz atrofida — haqiqiyroq Quaternius daraxtlari
+    const nearSpots = qt.length ? spots.splice(0, 700) : []; // markaz atrofida — haqiqiyroq Quaternius daraxtlari
     if (qt.length) { const qg = qt.map(() => []); nearSpots.forEach((sp, i) => qg[i % qt.length].push(sp));
       qt.forEach((prts, k) => { const pts = qg[k]; if (!pts.length) return; for (const pr of prts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = true;
         pts.forEach(([x, z], i) => { const sc2 = rnd(.9, 1.3); mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 2.399) % 6.28), sc.set(sc2, sc2, sc2)); im.setMatrixAt(i, mtx); }); scene.add(im); } }); }
@@ -256,6 +259,23 @@ function buildRoads(data) {
         pts.forEach(([x, z], i) => { const sc2 = rnd(.85, 1.25); mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 2.399) % 6.28), sc.set(sc2, sc2, sc2)); im.setMatrixAt(i, mtx); });
         scene.add(im); } });
   } else { crowns.castShadow = trunks.castShadow = true; scene.add(crowns, trunks); }
+  scatterNature();
+}
+// Tabiat (fps-buildings-env-kit, Quaternius CC0): ko'cha chetlari va bo'sh joylarda o't, gul, buta, paporotnik, tosh
+function scatterNature() {
+  const kinds = [['n-grass', 1.4, 2600], ['n-tall-grass', 1.6, 900], ['n-grass-wispy', 1.5, 700], ['n-bush', 2.6, 380], ['n-bush-with-flowers', 2.4, 320], ['n-flower-group', 1.6, 420], ['n-flower-single', .9, 300], ['n-fern', 1.5, 300], ['n-plant-big', 1.4, 200], ['n-clover', 1.2, 300], ['n-rock-medium', 2.2, 110], ['n-pebble-round', .8, 160]];
+  const spots = []; let seed = 7; const rr = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (const sg of [...segments].sort((a, b) => Math.hypot(a.ax, a.az) - Math.hypot(b.ax, b.az))) { const L = Math.hypot(sg.bx - sg.ax, sg.bz - sg.az); if (L < 8 || !sg.hw) continue;
+    const ux = (sg.bx - sg.ax) / L, uz = (sg.bz - sg.az) / L;
+    for (let t = 3; t < L - 3; t += 4.5) for (const sd of [1, -1]) { const off = sg.hw + 4.5 + rr() * 5, x = sg.ax + ux * t - uz * off * sd + (rr() - .5) * 2, z = sg.az + uz * t + ux * off * sd + (rr() - .5) * 2;
+      if (Math.hypot(x, z) < 1600 && roadClearC(x, z) > 2.5 && !state.residents.some((r) => Math.abs(r.x - x) < 13 && Math.abs(r.z - z) < 13)) spots.push([x, z]); }
+    if (spots.length > 9000) break; }
+  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+  const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  let k0 = 0;
+  for (const [name, w, n] of kinds) { const prts = K.parts(name, w); const pts = spots.slice(k0, k0 + n); k0 += n; if (!prts || !pts.length) continue;
+    for (const pr of prts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = w > 2; im.receiveShadow = true;
+      pts.forEach(([x, z], i) => { const s2 = .7 + rr() * .7; mtx.compose(ps.set(x, 0, z), q.setFromAxisAngle(Y, rr() * 6.28), sc.set(s2, s2, s2)); im.setMatrixAt(i, mtx); }); scene.add(im); } }
 }
 
 function nearestRoad(x, z) {
@@ -423,11 +443,21 @@ const bInfo = (st) => (String(st || '').startsWith('b:') ? (state.shop?.building
 // Uy dizayni yoki bino turi bo'yicha chizish
 const KH = { oddiy: 'building-type-a', zamonaviy: 'building-type-j', kottej: 'building-type-d', villa: 'building-type-p', minora: 'c-building-skyscraper-a' };
 for (const c of 'abcdefghijklmnopqrstu') KH['uy_' + c] = 'building-type-' + c; // 21 ta Kenney uyi
+const MB = ['house-a', 'house-b', 'house-c', 'tower-a', 'tower-b', 'tower-c', 'tower-d']; for (const c of MB) KH['mb_' + c] = 'm-building-sample-' + c; // fps-kit: g'ishtli modul uylar va minoralar
 const KB = { shop: 'c-building-a', cafe: 'c-building-b', pharmacy: 'c-building-c', market: 'c-building-d', restaurant: 'c-building-e', cinema: 'c-building-f', gym: 'c-building-g', bank: 'c-building-h', carshow: 'c-building-i', garage: 'c-building-k', office: 'c-building-skyscraper-a', hotel: 'c-building-skyscraper-b', hospital: 'c-building-skyscraper-c', bakery: 'c-building-l', guesthouse: 'building-type-m' };
 // Kenney modeli bilan: hovli (panjara, yo'lak) + model + daraxt
+// Hovli bezagi (fps-kit): gullar, butalar, tosh yo'lak, gultuvak
+function yardDecor(g, seed) {
+  const add = (n, w, x, z, r = 0) => { if (!K.has(n)) return; const o = K.place(n, w); o.position.set(x, .15, z); o.rotation.y = r; g.add(o); };
+  const fl = ['n-flower-group', 'n-bush-with-flowers', 'n-flower-single'];
+  for (let i = 0; i < 6; i++) { const x = -12 + i * 4.8; if (Math.abs(x) < 4) continue; add(fl[(seed + i) % 3], 1.6, x, 16.2, i); }
+  add('n-bush', 2.4, -12.5, -10); add('n-bush', 2.2, 12.5, -10); add('n-fern', 1.4, -12, 2); add('n-plant-big', 1.4, 12, 3);
+  add('s-planter', 1.6, -2.6, 11.5); add('s-planter', 1.6, 2.6, 11.5);
+}
 function kenneyLot(g, name, w = 16) {
   const big = name.includes('skyscraper'); lawn(g, big ? 30 : 28, big ? 30 : 30, 3);
-  const m = K.place(name, big ? 18 : w); g.add(m); tree(g, -11, 9, .9); tree(g, 11, 11, .8);
+  const m = K.place(name, big ? 18 : (name.startsWith('m-') ? 14 : w)); g.add(m); tree(g, -11, 9, .9); tree(g, 11, 11, .8);
+  yardDecor(g, name.length * 7);
   return m.userData.height + 2;
 }
 function buildStyle(g, st, c) { const b = bInfo(st); if (b && KB[b.m] && K.has(KB[b.m])) return kenneyLot(g, KB[b.m], 18); if (b) return (BUILD[b.m] || BUILD.shop)(g, c);
@@ -754,6 +784,7 @@ HOUSE_BUILDERS.mega = function (g, c) {
 const STYLE_NAMES_EXTRA = {};
 const STYLE_NAMES = { oddiy: '🏠 Oddiy', zamonaviy: '🏡 Zamonaviy', kottej: '🏘️ Kottej', villa: '🏝️ Villa', minora: '🏙️ Minora' };
 for (const c of 'abcdefghijklmnopqrstu') STYLE_NAMES['uy_' + c] = '🏡 Uy ' + c.toUpperCase();
+for (const c of MB) STYLE_NAMES['mb_' + c] = (c.startsWith('t') ? '🏢 Minora ' : '🧱 G\'isht uy ') + c.slice(-1).toUpperCase();
 STYLE_NAMES.mega = '👑 Mega-bino';
 const CAR_NAMES = { yoq: '— Mashinasiz', sedan: '🚗 Sedan', jeep: '🚙 Jip', sport: '🏎️ Sport (Ferrari)', limuzin: '🚘 Limuzin' };
 // ---- 💳 Balansni to'ldirish ----
@@ -1131,7 +1162,7 @@ let frame = 0;
   }
   await refresh().catch(() => status('Server bilan aloqa yo\'q'));
   drawCustomPlaces(); loadPois(); setInterval(loadPois, 10 * 60 * 1000);
-  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean) });
+  life = initLife({ THREE, scene, sky, sun, hemi, renderer, camera, controls, ways: allWays, glass: GLASS, $, mergeGeometries, carParts: K.CARS.map((n) => K.parts(n, 4.5)).filter(Boolean), lampParts: K.partsH('r-light-curved', 8) });
   // Egasiz (OSM) haqiqiy binolar o'chirilgan: shaharda faqat obunachilarning uylari va sotib olingan binolar turadi
   const qp = new URLSearchParams(location.search); // ko'rish uchun: ?soat=22 yoki ?havo=61 (yomg'ir) / 73 (qor)
   if (qp.has('soat')) life.setHour(+qp.get('soat')); if (qp.has('havo')) life.setWeather(+qp.get('havo'));

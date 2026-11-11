@@ -9,19 +9,25 @@ export const COMMERCIAL = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'
 export const CARS = ['sedan', 'suv', 'suv-luxury', 'sedan-sports', 'hatchback-sports', 'taxi', 'van', 'police', 'ambulance', 'delivery', 'truck'].map((c) => 'car-' + c);
 export const TREES = ['tree-oak', 'tree-default', 'tree-fat', 'tree-detailed', 'tree-large', 'tree-small'];
 export const QTREES = ['q-tree-a', 'q-tree-b', 'q-pine', 'q-bush']; // Quaternius Stylized Nature (CC0)
+// petroulacl/fps-buildings-env-kit (CC0): public/models/fps/ — tabiat, ko'cha chiroqlari, modul binolar, hovli jihozlari
+const FPS = './models/fps/';
+export const NATURE = ['tree-avoxahrpwe', 'tree-qvoop92wmg', 'pine-zt62gcekxz', 'grass', 'tall-grass', 'grass-wispy', 'bush', 'bush-with-flowers', 'flower-group', 'flower-single', 'plant-big', 'fern', 'clover', 'rock-medium', 'pebble-round'].map((n) => 'n-' + n);
+export const MODULAR = ['house-a', 'house-b', 'house-c', 'tower-a', 'tower-b', 'tower-c', 'tower-d'].map((n) => 'm-building-sample-' + n);
+export const PROPS = ['r-light-curved', 'r-light-square-double', 'r-construction-cone', 's-planter', 's-fence', 's-driveway-long', 's-path-stones-long'];
+const urlOf = (name) => name.startsWith('n-') ? FPS + 'nature/' + name.slice(2) + '.glb' : name.startsWith('m-') ? FPS + 'modular/' + name.slice(2) + '.glb' : name.startsWith('r-') ? FPS + 'roads/' + name.slice(2) + '.glb' : name.startsWith('s-') ? FPS + 'suburban/' + name.slice(2) + '.glb' : BASE + name + '.glb';
 
 const models = new Map();
 const loader = new GLTFLoader();
 function load(name) {
-  return new Promise((ok) => loader.load(BASE + name + '.glb', (g) => {
+  return new Promise((ok) => loader.load(urlOf(name), (g) => {
     g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; const mt = o.material; if (mt.map) mt.map.anisotropy = 4;
-      if (name.startsWith('q-')) { mt.vertexColors = false; mt.metalness = 0; mt.roughness = .9; if (mt.transparent) { mt.transparent = false; mt.alphaTest = .45; mt.side = THREE.DoubleSide; mt.depthWrite = true; } } } }); // Quaternius: barglar metall emas, shaffoflik — alphaTest
+      if (name.startsWith('q-') || name.startsWith('n-')) { mt.vertexColors = false; mt.metalness = 0; mt.roughness = .9; if (mt.transparent) { mt.transparent = false; mt.alphaTest = .45; mt.side = THREE.DoubleSide; mt.depthWrite = true; } } } }); // Quaternius: barglar metall emas, shaffoflik — alphaTest
     const box = new THREE.Box3().setFromObject(g.scene), size = box.getSize(new THREE.Vector3());
     models.set(name, { scene: g.scene, box, size }); ok(true);
   }, undefined, () => ok(false)));
 }
 // Avval shahar uchun eng kerakli modellar, keyin qolganlari
-export const ready = Promise.all([...SUBURBAN, ...COMMERCIAL, ...CARS, ...TREES, ...QTREES].map(load)).then((r) => r.filter(Boolean).length);
+export const ready = Promise.all([...SUBURBAN, ...COMMERCIAL, ...CARS, ...TREES, ...QTREES, ...NATURE, ...MODULAR, ...PROPS].map(load)).then((r) => r.filter(Boolean).length);
 export const has = (name) => models.has(name);
 
 // Modelni nusxalab, eni (x/z bo'yicha kattasi) `width` metr bo'ladigan qilib, yerga (y=0) va markazga qo'yadi
@@ -50,3 +56,6 @@ export function parts(name, width) {
   });
   return [...byMat.values()].map(({ material, geos }) => ({ material, geometry: mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g))) }));
 }
+// Balandligi bo'yicha (chiroq ustunlari kabi ingichka modellar uchun)
+export function partsH(name, height) { const m = models.get(name); if (!m) return null; return parts(name, height * Math.max(m.size.x, m.size.z) / m.size.y); }
+export const placeH = (name, height) => { const m = models.get(name); return m ? place(name, height * Math.max(m.size.x, m.size.z) / m.size.y) : null; };

@@ -42,7 +42,7 @@ export function initLife(C) {
     renderer.toneMappingExposure = .6 + .45 * day - wet * .12 * day;
     const fog = dayFog.clone().lerp(duskFog, dusk * .6).lerp(nightFog, state.night * .9).lerp(rainFog, wet * .5 * day);
     scene.fog.color.copy(fog); scene.fog.near = wet ? 600 : 2500; scene.fog.far = wet ? 5000 : 12000;
-    if (envMap === undefined) envMap = scene.environment; scene.environment = day > .35 ? envMap : null; // tunda kunduzgi aks yorug'ligi o'chadi
+    if (envMap === undefined || (window.__dayEnv && envMap !== window.__dayEnv)) envMap = window.__dayEnv || scene.environment; scene.environment = day > .35 ? envMap : null; // tunda kunduzgi aks yorug'ligi o'chadi
     glass.emissive.setHex(state.night > .5 ? 0xffc46b : 0x1b3a5c); glass.emissiveIntensity = .25 + state.night * 1.1; // kechasi derazalar yonadi
     lampMat.emissiveIntensity = state.night * 2.5;
     lampMat.color.setHex(state.night > .3 ? 0xfff2c4 : 0xdddddd);
@@ -60,7 +60,7 @@ export function initLife(C) {
       for (let i = 0; i < w.pts.length - 1; i++) {
         const [ax, az] = w.pts[i], [bx, bz] = w.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (!L) continue;
         const nx = -(bz - az) / L, nz = (bx - ax) / L, off = w.wd / 2 + 1.2;
-        for (let t = (45 - acc) % 45; t < L; t += 45) { const x = ax + (bx - ax) * t / L, z = az + (bz - az) * t / L, side = pts.length % 2 ? 1 : -1; pts.push([x + nx * off * side, z + nz * off * side]); }
+        for (let t = (45 - acc) % 45; t < L; t += 45) { const x = ax + (bx - ax) * t / L, z = az + (bz - az) * t / L, side = pts.length % 2 ? 1 : -1; pts.push([x + nx * off * side, z + nz * off * side, Math.atan2(nx * side, nz * side)]); }
         acc = (acc + L) % 45;
         if (pts.length > 6000) break;
       }
@@ -68,10 +68,16 @@ export function initLife(C) {
     if (!pts.length) return;
     const poleG = new THREE.CylinderGeometry(.12, .16, 7, 6); poleG.translate(0, 3.5, 0);
     const lampG = new THREE.SphereGeometry(.45, 8, 6); lampG.translate(0, 7.1, 0);
-    const poles = new THREE.InstancedMesh(poleG, poleMat, pts.length), lamps = new THREE.InstancedMesh(lampG, lampMat, pts.length);
-    const m = new THREE.Matrix4();
-    pts.forEach(([x, z], i) => { m.makeTranslation(x, 0, z); poles.setMatrixAt(i, m); lamps.setMatrixAt(i, m); });
-    scene.add(poles, lamps);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), at = new THREE.Vector3();
+    if (C.lampParts?.length) { // fps-kit (Kenney City Kit Roads) egilgan chiroq ustunlari; chiroq boshi yo'l ustida
+      const headG = new THREE.SphereGeometry(.45, 8, 6); headG.scale(1.5, .35, 1.5); headG.translate(0, 7.55, -2.3);
+      for (const pr of C.lampParts) { const im = new THREE.InstancedMesh(pr.geometry, pr.material, pts.length); im.castShadow = true; pts.forEach(([x, z, r], i) => { m.compose(at.set(x, 0, z), q.setFromAxisAngle(Y, r), one); im.setMatrixAt(i, m); }); scene.add(im); }
+      const lamps = new THREE.InstancedMesh(headG, lampMat, pts.length); pts.forEach(([x, z, r], i) => { m.compose(at.set(x, 0, z), q.setFromAxisAngle(Y, r), one); lamps.setMatrixAt(i, m); }); scene.add(lamps);
+    } else {
+      const poles = new THREE.InstancedMesh(poleG, poleMat, pts.length), lamps = new THREE.InstancedMesh(lampG, lampMat, pts.length);
+      pts.forEach(([x, z], i) => { m.makeTranslation(x, 0, z); poles.setMatrixAt(i, m); lamps.setMatrixAt(i, m); });
+      scene.add(poles, lamps);
+    }
     // tunda yo'llarga yorug'lik dog'lari (arzon "yorug'lik" effekti)
     const glowG = new THREE.CircleGeometry(6, 16); glowG.rotateX(-Math.PI / 2); glowG.translate(0, .6, 0);
     const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcf7a, transparent: true, opacity: 0, depthWrite: false });
