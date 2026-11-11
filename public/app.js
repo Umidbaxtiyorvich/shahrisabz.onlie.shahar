@@ -928,7 +928,7 @@ function showPreview(el, style, color) {
     const c = pvR.domElement; c.style.touchAction = 'none';
     c.onpointerdown = (e) => (pvDrag = e.clientX); addEventListener('pointerup', () => (pvDrag = null)); c.onpointermove = (e) => { if (pvDrag !== null) { pvAng -= (e.clientX - pvDrag) * .01; pvDrag = e.clientX; } };
     (function spin() { requestAnimationFrame(spin); const c = pvR.domElement; if (!c.isConnected || !pvObj) return; if (pvDrag === null) pvAng += .006;
-      const b = pvObj.userData.box, D = b.d; pvCam.position.set(Math.sin(pvAng) * D * .85, b.cy + D * .35, Math.cos(pvAng) * D * .85); pvCam.lookAt(0, b.cy, 0); pvR.render(pvScene, pvCam); })();
+      const b = pvObj.userData.box, D = b.d; pvCam.position.set(Math.sin(pvAng) * D * .95, b.cy + D * .32, Math.cos(pvAng) * D * .95); pvCam.lookAt(0, b.cy, 0); pvR.render(pvScene, pvCam); })();
   }
   el.prepend(pvR.domElement); const w = el.clientWidth || 300, h = Math.round(Math.min(220, w * .6)); pvR.setSize(w, h); pvCam.aspect = w / h; pvCam.updateProjectionMatrix();
   if (pvObj) pvScene.remove(pvObj);
